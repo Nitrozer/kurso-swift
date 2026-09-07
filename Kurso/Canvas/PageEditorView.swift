@@ -8,6 +8,7 @@ import KursoModels
 /// d'attente en attendant le volet markdown (§11, etape 1).
 struct PageEditorView: View {
     @Bindable var page: Page
+    var onClose: () -> Void = {}
     @Environment(\.modelContext) private var context
 
     @State private var drawing = PKDrawing()
@@ -46,7 +47,18 @@ struct PageEditorView: View {
     }
 
     private var header: some View {
-        HStack {
+        HStack(spacing: 14) {
+            Button(action: onClose) {
+                ChevronGlyph()
+                    .stroke(K.ink, style: StrokeStyle(lineWidth: 2.6, lineCap: .round, lineJoin: .round))
+                    .frame(width: 13, height: 13)
+                    .frame(width: 34, height: 34)
+                    .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .strokeBorder(K.ink, lineWidth: 2.5))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Retour aux pages")
+
             VStack(alignment: .leading, spacing: 3) {
                 DisplayText(page.title.isEmpty ? "Page sans titre" : page.title, size: 19)
                 MetaText(page.createdAt.formatted(.dateTime.weekday(.wide).day().month(.wide)))

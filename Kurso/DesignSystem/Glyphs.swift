@@ -35,6 +35,24 @@ struct PencilGlyph: Shape {
     }
 }
 
+/// Chevron dessine — pas d'icone de bibliotheque.
+struct ChevronGlyph: Shape {
+    var pointsRight = false
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        if pointsRight {
+            p.move(to: CGPoint(x: rect.minX + rect.width * 0.35, y: rect.minY))
+            p.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.2, y: rect.midY))
+            p.addLine(to: CGPoint(x: rect.minX + rect.width * 0.35, y: rect.maxY))
+        } else {
+            p.move(to: CGPoint(x: rect.maxX - rect.width * 0.35, y: rect.minY))
+            p.addLine(to: CGPoint(x: rect.minX + rect.width * 0.2, y: rect.midY))
+            p.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.35, y: rect.maxY))
+        }
+        return p
+    }
+}
+
 struct Glyph: View {
     enum Kind { case plus, pencil }
     var kind: Kind
