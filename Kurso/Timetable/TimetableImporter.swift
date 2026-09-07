@@ -76,11 +76,26 @@ enum TimetableImporter {
         let accepted = proposals.filter(\.isAccepted)
         var courseByUID: [String: Course] = [:]
 
+        // Reimporter ne doit pas dupliquer : on reprend la matiere existante
+        // quand le nom correspond, sinon les pages deja ecrites se
+        // retrouveraient rattachees a une matiere devenue orpheline.
+        let existing = (try? context.fetch(FetchDescriptor<Course>())) ?? []
+        var byName = Dictionary(existing.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+
+        // Les anciens creneaux partent : ils decrivent un emploi du temps
+        // qui n'a plus cours.
+        for slot in (try? context.fetch(FetchDescriptor<TimeSlot>())) ?? [] { context.delete(slot) }
+        for old in (try? context.fetch(FetchDescriptor<Timetable>())) ?? [] { context.delete(old) }
+
         for proposal in accepted {
-            let course = Course(name: proposal.name.trimmingCharacters(in: .whitespaces))
+            let name = proposal.name.trimmingCharacters(in: .whitespaces)
+            let course = byName[name] ?? Course(name: name)
             course.icsUID = proposal.group.uids.first
             course.teacher = proposal.group.teacher
-            context.insert(course)
+            if byName[name] == nil {
+                context.insert(course)
+                byName[name] = course
+            }
             for uid in proposal.group.uids { courseByUID[uid] = course }
         }
 

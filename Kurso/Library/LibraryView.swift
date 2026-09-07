@@ -19,6 +19,7 @@ struct LibraryView: View {
 
     @Environment(\.modelContext) private var context
     @Query(sort: \Course.name) private var courses: [Course]
+    @Query private var slots: [TimeSlot]
     @Query(sort: \Page.createdAt, order: .reverse) private var pages: [Page]
 
     @State private var selection: CahierSelection = .allPages
@@ -51,7 +52,7 @@ struct LibraryView: View {
     private var library: some View {
         VStack(spacing: 0) {
             header
-            courseFilter
+            toolbar
             if courses.isEmpty { importInvite }
             grid
         }
@@ -112,8 +113,6 @@ struct LibraryView: View {
             }
             Spacer(minLength: 0)
             searchField
-            importButton
-            pdfButton
             newPageButton
         }
         .padding(.horizontal, 28)
@@ -184,23 +183,35 @@ struct LibraryView: View {
 
     // MARK: Filtre par matiere
 
-    @ViewBuilder private var courseFilter: some View {
-        if !courses.isEmpty {
-            ScrollView(.horizontal) {
-                HStack(spacing: 9) {
-                    chip("Toutes", isActive: selection == .allPages) { selection = .allPages }
-                    ForEach(courses) { course in
-                        chip(course.name, isActive: selection == .course(course.id)) {
-                            selection = .course(course.id)
+    /// Filtres a gauche, actions de rangement a droite : la ligne du haut
+    /// garde la seule action qu'on vient chercher, ecrire.
+    private var toolbar: some View {
+        HStack(spacing: 12) {
+            if courses.isEmpty {
+                Spacer(minLength: 0)
+            } else {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 9) {
+                        chip("Toutes", isActive: selection == .allPages) { selection = .allPages }
+                        ForEach(courses) { course in
+                            chip(course.name, isActive: selection == .course(course.id)) {
+                                selection = .course(course.id)
+                            }
                         }
                     }
-
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 2)
                 }
-                .padding(.horizontal, 28)
-                .padding(.vertical, 14)
+                .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
+            HStack(spacing: 9) {
+                importButton
+                pdfButton
+            }
+            .padding(.trailing, 28)
+            .padding(.leading, courses.isEmpty ? 28 : 0)
         }
+        .padding(.vertical, 12)
     }
 
     private func chip(_ label: String, isActive: Bool, action: @escaping () -> Void) -> some View {
@@ -232,12 +243,12 @@ struct LibraryView: View {
         .buttonStyle(.plain)
     }
 
-    /// Ouvre l'import d'emploi du temps : c'est lui qui cree les matieres.
+    /// Ouvre l'emploi du temps : import la premiere fois, consultation ensuite.
     private var importButton: some View {
         Button { isImporting = true } label: {
             HStack(spacing: 7) {
-                Glyph(kind: .plus, size: 12)
-                Text("Emploi du temps")
+                if slots.isEmpty { Glyph(kind: .plus, size: 12) }
+                Text(slots.isEmpty ? "Importer l'emploi du temps" : "Emploi du temps")
                     .font(KFont.body(12, weight: .extraBold))
                     .foregroundStyle(K.ink)
             }

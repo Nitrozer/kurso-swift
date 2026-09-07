@@ -12,6 +12,11 @@ struct TimetableOnboardingView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
 
+    @Query(sort: \TimeSlot.start) private var slots: [TimeSlot]
+    @Query(sort: \Course.name) private var courses: [Course]
+    @Query private var timetables: [Timetable]
+
+    @State private var isReplacing = false
     @State private var url = ""
     @State private var proposals: [TimetableImporter.Proposal] = []
     @State private var events: [ICSEvent] = []
@@ -21,7 +26,15 @@ struct TimetableOnboardingView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            if proposals.isEmpty { urlStep } else { reviewStep }
+            // Un emploi du temps deja importe se consulte : proposer d'en
+            // ajouter un second n'a pas de sens.
+            if hasTimetable && !isReplacing {
+                currentStep
+            } else if proposals.isEmpty {
+                urlStep
+            } else {
+                reviewStep
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(K.paper)
@@ -29,12 +42,82 @@ struct TimetableOnboardingView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
-            MetaText(proposals.isEmpty ? "Étape 1 sur 2" : "Étape 2 sur 2")
-            DisplayText(proposals.isEmpty ? "Ton emploi du temps" : "\(proposals.count) matières détectées", size: 30)
+            MetaText(headerMeta)
+            DisplayText(headerTitle, size: 30)
         }
         .padding(.horizontal, 28)
         .padding(.top, 26)
         .padding(.bottom, 18)
+    }
+
+    private var hasTimetable: Bool { !slots.isEmpty }
+
+    private var headerMeta: String {
+        if hasTimetable && !isReplacing { return "Emploi du temps" }
+        return proposals.isEmpty ? "Étape 1 sur 2" : "Étape 2 sur 2"
+    }
+
+    private var headerTitle: String {
+        if hasTimetable && !isReplacing { return "Ton emploi du temps" }
+        return proposals.isEmpty ? "Ton emploi du temps" : "\(proposals.count) matières détectées"
+    }
+
+    // MARK: L'emploi du temps deja en place
+
+    private var currentStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(summaryLine)
+                        .font(KFont.body(13.5, weight: .bold))
+                        .foregroundStyle(K.ink.opacity(0.75))
+
+                    ForEach(courses) { course in
+                        HStack(spacing: 13) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(course.name)
+                                    .font(KFont.body(14, weight: .extraBold))
+                                    .foregroundStyle(K.ink)
+                                MetaText(courseSubtitle(course))
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .sticker(fill: K.paperAlt, radius: 14)
+                    }
+                }
+                .padding(.horizontal, 28)
+                .padding(.bottom, 8)
+            }
+            .scrollIndicators(.hidden)
+
+            HStack(spacing: 12) {
+                Button("Fermer") { dismiss() }
+                    .buttonStyle(StickerButtonStyle(kind: .secondary))
+                Button("Remplacer") {
+                    url = timetables.first?.url ?? ""
+                    isReplacing = true
+                }
+                .buttonStyle(StickerButtonStyle(kind: .primary))
+            }
+            .padding(.horizontal, 28)
+            .padding(.bottom, 22)
+        }
+    }
+
+    private var summaryLine: String {
+        let n = slots.count
+        let base = "\(courses.count) matière\(courses.count > 1 ? "s" : "") · \(n) créneau\(n > 1 ? "x" : "")"
+        guard let sync = timetables.first?.lastSuccessAt else { return base }
+        return base + " · importé le " + sync.formatted(.dateTime.day().month(.abbreviated))
+    }
+
+    private func courseSubtitle(_ course: Course) -> String {
+        let count = slots.filter { $0.course?.id == course.id }.count
+        let base = "\(count) créneau\(count > 1 ? "x" : "")"
+        guard let teacher = course.teacher else { return base }
+        return "\(base) · \(teacher)"
     }
 
     // MARK: Coller le lien

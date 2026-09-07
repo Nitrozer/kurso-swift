@@ -31,9 +31,17 @@ struct DayView: View {
                 // prototype, et elle tient parce que les deux se lisent d'un
                 // coup d'oeil en arrivant.
                 HStack(alignment: .top, spacing: 18) {
-                    if let slot = currentSlot {
-                        currentCourse(slot).frame(maxWidth: .infinity)
+                    // La carte bleue est toujours la : le soir ou entre deux
+                    // cours elle bascule sur le prochain plutot que de
+                    // disparaitre, sinon l'accueil se vide a moitie.
+                    Group {
+                        if let slot = featuredSlot {
+                            courseCard(slot, live: currentSlot != nil)
+                        } else {
+                            freeDayCard
+                        }
                     }
+                    .frame(maxWidth: .infinity)
                     StreakCard(
                         streak: player?.streak ?? 0,
                         record: max(player?.recordStreak ?? 0, player?.streak ?? 0),
@@ -43,7 +51,7 @@ struct DayView: View {
                         gribouMood: Gribou.mood(for: gribouContext),
                         gribouLine: gribouSentence
                     )
-                    .frame(maxWidth: currentSlot == nil ? .infinity : 320)
+                    .frame(maxWidth: 320)
                 }
 
                 HStack(alignment: .top, spacing: 18) {
@@ -137,10 +145,38 @@ struct DayView: View {
 
     // MARK: Cours en cours
 
-    private func currentCourse(_ slot: TimeSlot) -> some View {
+    /// Le cours mis en avant : celui en cours, sinon le prochain a venir.
+    private var featuredSlot: TimeSlot? { currentSlot ?? nextSlots.first }
+
+    /// Quand l'emploi du temps ne propose plus rien, la place de la carte
+    /// bleue reste occupee.
+    private var freeDayCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("JOURNÉE LIBRE")
+                .font(KFont.body(11, weight: .extraBold)).tracking(1)
+                .foregroundStyle(K.ink)
+                .padding(.horizontal, 12).padding(.vertical, 4)
+                .background(K.paper, in: Capsule())
+                .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
+            Text("Pas de cours prévu")
+                .font(KFont.display(34))
+                .foregroundStyle(K.paperAlt)
+            Text(dueCards.isEmpty
+                 ? "Rien à réviser non plus. Profites-en."
+                 : "Bon moment pour descendre \(dueCards.count == 1 ? "ta carte" : "tes \(dueCards.count) cartes").")
+                .font(KFont.body(13.5, weight: .bold))
+                .foregroundStyle(K.paperAlt)
+            Spacer(minLength: 0)
+        }
+        .padding(22)
+        .frame(maxWidth: .infinity, minHeight: 210, alignment: .leading)
+        .sticker(fill: K.brand, radius: 26)
+    }
+
+    private func courseCard(_ slot: TimeSlot, live: Bool) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("EN COURS")
+                Text(live ? "EN COURS" : "PROCHAIN COURS")
                     .font(KFont.body(11, weight: .extraBold)).tracking(1)
                     .foregroundStyle(K.ink)
                     .padding(.horizontal, 12).padding(.vertical, 4)
@@ -161,9 +197,10 @@ struct DayView: View {
                     .font(KFont.body(13.5, weight: .bold))
                     .foregroundStyle(K.paperAlt)
                 Spacer(minLength: 0)
+                let figure = countdown(slot, live: live)
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
-                    Text("\(remainingMinutes(slot))").font(KFont.display(48)).foregroundStyle(K.paperAlt)
-                    Text("min").font(KFont.body(13, weight: .extraBold)).foregroundStyle(K.paperAlt)
+                    Text(figure.value).font(KFont.display(48)).foregroundStyle(K.paperAlt)
+                    Text(figure.unit).font(KFont.body(13, weight: .extraBold)).foregroundStyle(K.paperAlt)
                 }
             }
 
@@ -227,10 +264,23 @@ struct DayView: View {
     }
 
     private func timeRange(_ slot: TimeSlot) -> String {
-        let start = slot.start.formatted(.dateTime.hour().minute())
+        let cal = Calendar.current
+        let day = cal.isDateInToday(slot.start) ? ""
+            : cal.isDateInTomorrow(slot.start) ? "demain "
+            : slot.start.formatted(.dateTime.weekday(.wide)) + " "
+        let start = day + slot.start.formatted(.dateTime.hour().minute())
         let end = slot.end.formatted(.dateTime.hour().minute())
         guard let teacher = slot.course?.teacher else { return "\(start) → \(end)" }
         return "\(start) → \(end) · \(teacher)"
+    }
+
+    /// Le grand chiffre de la carte. Un cours lointain affiche son heure de
+    /// debut : « dans 940 min » ne veut rien dire.
+    private func countdown(_ slot: TimeSlot, live: Bool) -> (value: String, unit: String) {
+        if live { return ("\(remainingMinutes(slot))", "min restantes") }
+        let minutes = Int(slot.start.timeIntervalSince(now) / 60)
+        if minutes <= 120 { return ("\(max(0, minutes))", "min avant") }
+        return (slot.start.formatted(.dateTime.hour().minute()), "au départ")
     }
 
     private func remainingMinutes(_ slot: TimeSlot) -> Int {
