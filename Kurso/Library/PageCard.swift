@@ -11,6 +11,7 @@ struct PageCard: View {
     let page: Page
     var isActive = false
     var action: () -> Void
+    var onDelete: (() -> Void)? = nil
 
     var body: some View {
         Button(action: action) {
@@ -30,6 +31,11 @@ struct PageCard: View {
             }
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            if let onDelete {
+                Button("Supprimer la page", role: .destructive, action: onDelete)
+            }
+        }
     }
 
     private var preview: some View {

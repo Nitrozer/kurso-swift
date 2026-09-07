@@ -23,6 +23,7 @@ struct LibraryView: View {
     @State private var query = ""
     @State private var isImporting = false
     @State private var isPickingPDF = false
+    @State private var pageToDelete: Page?
     @FocusState private var isSearching: Bool
 
     var body: some View {
@@ -43,6 +44,17 @@ struct LibraryView: View {
         }
         .sheet(isPresented: $isImporting) {
             TimetableOnboardingView()
+        }
+        .confirmationDialog(
+            "Supprimer cette page ?",
+            isPresented: Binding(get: { pageToDelete != nil }, set: { if !$0 { pageToDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Supprimer", role: .destructive) { deletePage() }
+            Button("Annuler", role: .cancel) { pageToDelete = nil }
+        } message: {
+            // Une page emporte ses cartes : il faut le dire avant, pas apres.
+            Text(deletionWarning)
         }
         .fileImporter(isPresented: $isPickingPDF, allowedContentTypes: [.pdf]) { result in
             guard case .success(let url) = result else { return }
@@ -237,7 +249,9 @@ struct LibraryView: View {
                                 .padding(.horizontal, 28)
                             LazyVGrid(columns: columns, spacing: 16) {
                                 ForEach(day.items) { page in
-                                    PageCard(page: page) { openedPage = page }
+                                    PageCard(page: page,
+                                             action: { openedPage = page },
+                                             onDelete: { pageToDelete = page })
                                 }
                             }
                             .padding(.horizontal, 28)
@@ -264,7 +278,9 @@ struct LibraryView: View {
                         .padding(.horizontal, 28)
                     LazyVGrid(columns: columns, spacing: 16) {
                         ForEach(hits, id: \.item.id) { hit in
-                            PageCard(page: hit.item) { openedPage = hit.item }
+                            PageCard(page: hit.item,
+                                     action: { openedPage = hit.item },
+                                     onDelete: { pageToDelete = hit.item })
                         }
                     }
                     .padding(.horizontal, 28)
@@ -280,6 +296,21 @@ struct LibraryView: View {
     }
 
     // MARK: Donnees derivees
+
+    private var deletionWarning: String {
+        let cards = (pageToDelete?.cards ?? []).count
+        let title = pageToDelete?.title.isEmpty == false ? "« \(pageToDelete!.title) »" : "Cette page"
+        guard cards > 0 else { return "\(title) sera supprimée. C'est définitif." }
+        return "\(title) sera supprimée, avec \(cards) carte(s) de révision. C'est définitif."
+    }
+
+    private func deletePage() {
+        guard let page = pageToDelete else { return }
+        if openedPage?.id == page.id { openedPage = nil }
+        context.delete(page)
+        try? context.save()
+        pageToDelete = nil
+    }
 
     private var selectedCourse: Course? {
         guard case .course(let id) = selection else { return nil }
