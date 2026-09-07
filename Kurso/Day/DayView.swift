@@ -11,6 +11,7 @@ struct DayView: View {
     @Environment(\.modelContext) private var context
     @Query private var slots: [TimeSlot]
     @Query private var cards: [Card]
+    @Query private var assignments: [Assignment]
     @Query(sort: \Page.createdAt, order: .reverse) private var pages: [Page]
 
     @State private var player: PlayerState?
@@ -25,6 +26,7 @@ struct DayView: View {
             VStack(alignment: .leading, spacing: 18) {
                 header
                 if let slot = currentSlot { currentCourse(slot) }
+                gribouCard
                 questsCard
                 upcoming
                 reviewCTA
@@ -149,6 +151,71 @@ struct DayView: View {
 
     private func remainingMinutes(_ slot: TimeSlot) -> Int {
         max(0, Int(slot.end.timeIntervalSince(now) / 60))
+    }
+
+    // MARK: Gribou
+
+    /// Il n'est pas un logo posé : c'est lui qui dit où en est la semaine.
+    @ViewBuilder private var gribouCard: some View {
+        if let mood = Gribou.mood(for: gribouContext) {
+            HStack(spacing: 18) {
+                GribouView(mood: mood, size: 130)
+                VStack(alignment: .leading, spacing: 5) {
+                    MetaText(mood.label)
+                    Text(gribouLine(mood))
+                        .font(KFont.body(14, weight: .extraBold))
+                        .foregroundStyle(K.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if mineWear > 0 {
+                        mineGauge
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .sticker(fill: K.paperAlt, radius: 22)
+        }
+    }
+
+    private var gribouContext: Gribou.Context {
+        Gribou.Context(
+            isPencilDown: false,
+            isInClass: currentSlot != nil,
+            hasOverdueAssignment: assignments.contains {
+                !$0.isDone && ($0.dueAt.map { $0 < now } ?? false)
+            },
+            streak: player?.streak ?? 0,
+            hour: Calendar.current.component(.hour, from: now)
+        )
+    }
+
+    private func gribouLine(_ mood: GribouMood) -> String {
+        switch mood {
+        case .inquiet:   "Un devoir est en retard."
+        case .concentre: "Cours en route — je note avec toi."
+        case .fier:      "\(player?.streak ?? 0) jours d'affilée. Ça tient."
+        case .endormi:   "Il se fait tard. Demain sera plus efficace."
+        case .idle:      "Prêt quand tu veux."
+        }
+    }
+
+    /// L'usure de la mine : dix heures d'écriture, puis elle se retaille au
+    /// passage de niveau. La progression est sur le personnage, pas dans une barre —
+    /// celle-ci ne fait que chiffrer ce que Gribou montre déjà.
+    private var mineWear: Double {
+        GameValues.mineWear(writingSecondsSinceLevel: pages.reduce(0) { $0 + $1.writingSeconds })
+    }
+
+    private var mineGauge: some View {
+        HStack(spacing: 8) {
+            Capsule().fill(K.ink.opacity(0.12))
+                .frame(width: 90, height: 6)
+                .overlay(alignment: .leading) {
+                    Capsule().fill(K.reward).frame(width: 90 * mineWear, height: 6)
+                }
+            MetaText("mine usée à \(Int(mineWear * 100)) %")
+        }
     }
 
     // MARK: Quêtes
