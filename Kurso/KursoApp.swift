@@ -24,20 +24,8 @@ struct KursoApp: App {
 
     var body: some Scene {
         WindowGroup {
-            // Placeholder de l'etape 1. Le canevas PencilKit le remplacera.
-            ContentPlaceholder()
+            RootView()
         }
         .modelContainer(container)
-    }
-}
-
-private struct ContentPlaceholder: View {
-    @Environment(\.modelContext) private var context
-    var body: some View {
-        VStack(spacing: 8) {
-            Text("Kurso").font(.largeTitle.bold())
-            Text("Socle en place — etape 1").foregroundStyle(.secondary)
-        }
-        .padding()
     }
 }
