@@ -313,6 +313,7 @@ struct ReviewSessionView: View {
         card.dueAt = SpacedRepetition.dueDate(from: state)
 
         let gained = session.answer(answer)
+        DailyActivityStore.record(.reviewCards, context: context)
         if let player {
             player.xp += gained
             player.level = GameValues.level(forTotalXP: player.xp)

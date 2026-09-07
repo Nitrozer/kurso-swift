@@ -1,4 +1,5 @@
 import SwiftUI
+import KursoModels
 
 /// La coquille : le rail a gauche, l'ecran actif a droite.
 ///
@@ -6,6 +7,7 @@ import SwiftUI
 /// et refusent d'etre stylees — elles laissaient la typographie et les pastilles
 /// d'iPadOS visibles au milieu de la direction artistique.
 struct AppShell: View {
+    @State private var pageToOpen: Page?
     @State private var tab: RailTab = {
         #if DEBUG
         if let index = ProcessInfo.processInfo.arguments.firstIndex(of: "-startTab"),
@@ -35,8 +37,13 @@ struct AppShell: View {
 
     @ViewBuilder private var content: some View {
         switch tab {
+        case .day:
+            DayView(tab: $tab) { page in
+                pageToOpen = page
+                tab = .notebooks
+            }
         case .notebooks:
-            LibraryView()
+            LibraryView(pageToOpen: $pageToOpen)
         case .review:
             ReviewSessionView()
         case .memory:
@@ -44,7 +51,7 @@ struct AppShell: View {
         default:
             EmptyState(
                 title: tab.label.capitalized,
-                message: "Cet ecran arrive plus tard dans la construction."
+                message: "Cet écran arrive plus tard dans la construction."
             )
         }
     }

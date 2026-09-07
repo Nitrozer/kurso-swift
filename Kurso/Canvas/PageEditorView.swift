@@ -165,7 +165,13 @@ struct PageEditorView: View {
 
     private func persist() {
         guard !loadFailed else { return }
+        let before = page.writingSeconds
         page.writingSeconds = clock.seconds(now: .now)
+        // Une page compte pour la quete des qu'elle passe dix minutes d'ecriture
+        // reelle, et une seule fois.
+        if before < GameValues.writtenPageSeconds, page.writingSeconds >= GameValues.writtenPageSeconds {
+            DailyActivityStore.record(.writePage, context: context)
+        }
         displayedSeconds = page.writingSeconds
         page.drawing = drawing.dataRepresentation()
         try? context.save()

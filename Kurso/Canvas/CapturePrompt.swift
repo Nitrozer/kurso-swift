@@ -65,6 +65,7 @@ struct CapturePrompt: View {
         card.answerDrawing = answer.dataRepresentation()
         card.page = page
         context.insert(card)
+        DailyActivityStore.record(.captureCard, context: context)
         try? context.save()
         onDone()
     }

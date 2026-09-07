@@ -13,7 +13,7 @@ struct KursoApp: App {
             Course.self, Page.self, Card.self, Chapter.self, Season.self,
             League.self, LeagueMember.self, Assignment.self, GlossaryTerm.self,
             Abbreviation.self, AudioRecording.self, Quest.self, PlayerState.self,
-            Timetable.self, TimeSlot.self, MarkerFeedback.self, PDFAsset.self,
+            Timetable.self, TimeSlot.self, MarkerFeedback.self, PDFAsset.self, DailyActivity.self,
         ])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {

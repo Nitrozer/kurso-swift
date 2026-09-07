@@ -14,6 +14,9 @@ enum CahierSelection: Hashable {
 /// Il n'existe pas d'entite `Notebook` : les dossiers crees a la main sont
 /// refuses, c'est l'emploi du temps qui range.
 struct LibraryView: View {
+    /// Page demandee depuis un autre ecran — l'accueil ouvre le cahier du cours.
+    var pageToOpen: Binding<Page?>? = nil
+
     @Environment(\.modelContext) private var context
     @Query(sort: \Course.name) private var courses: [Course]
     @Query(sort: \Page.createdAt, order: .reverse) private var pages: [Page]
@@ -27,6 +30,16 @@ struct LibraryView: View {
     @FocusState private var isSearching: Bool
 
     var body: some View {
+        content
+            .task(id: pageToOpen?.wrappedValue?.id) {
+                if let requested = pageToOpen?.wrappedValue {
+                    openedPage = requested
+                    pageToOpen?.wrappedValue = nil
+                }
+            }
+    }
+
+    @ViewBuilder private var content: some View {
         if let page = openedPage {
             PageEditorView(page: page, onClose: { openedPage = nil })
                 .id(page.id)

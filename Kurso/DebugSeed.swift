@@ -41,6 +41,26 @@ enum DebugSeed {
             context.insert(card)
         }
 
+        // Un creneau en cours, pour que l'accueil ait quelque chose a montrer.
+        let slot = TimeSlot(icsUID: "demo-1", summary: "Automatique Cours magistral",
+                            start: Date().addingTimeInterval(-1800),
+                            end: Date().addingTimeInterval(3600))
+        slot.location = "Salle 204"
+        slot.course = course
+        context.insert(slot)
+
+        let later = TimeSlot(icsUID: "demo-2", summary: "Radiocommunications",
+                             start: Date().addingTimeInterval(7200),
+                             end: Date().addingTimeInterval(12600))
+        later.location = "Amphi B"
+        later.course = course
+        context.insert(later)
+
+        let activity = DailyActivity(day: Calendar.current.startOfDay(for: .now))
+        activity.cardsReviewed = 3
+        activity.cardsCaptured = 1
+        context.insert(activity)
+
         let player = PlayerState()
         player.xp = 320
         player.level = 7

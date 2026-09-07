@@ -58,7 +58,19 @@ struct Sticker: ViewModifier {
 
     /// L'ombre est un second bloc decale, pas un `shadow` : `shadow` floute
     /// toujours un peu, et le flou est precisement ce qu'on refuse.
+    ///
+    /// Elle n'existe que sous un fond opaque. Sous un fond transparent, elle
+    /// traverserait l'element et le peindrait en noir — deux bugs visibles
+    /// avant que la regle soit posee ici plutot qu'a chaque appel.
     @ViewBuilder private var hardShadow: some View {
+        if fill == .clear {
+            EmptyView()
+        } else {
+            shadowBlock
+        }
+    }
+
+    @ViewBuilder private var shadowBlock: some View {
         switch state {
         case .rest:
             shape.fill(K.ink).offset(y: DesignTokens.Sticker.shadowRest)
