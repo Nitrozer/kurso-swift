@@ -20,6 +20,7 @@ struct LibraryView: View {
     @State private var selection: CahierSelection = .allPages
     @State private var openedPage: Page?
     @State private var query = ""
+    @State private var isImporting = false
     @FocusState private var isSearching: Bool
 
     var body: some View {
@@ -35,8 +36,38 @@ struct LibraryView: View {
         VStack(spacing: 0) {
             header
             courseFilter
+            if courses.isEmpty { importInvite }
             grid
         }
+        .sheet(isPresented: $isImporting) {
+            TimetableOnboardingView()
+        }
+    }
+
+    /// Tant qu'aucun emploi du temps n'est importe, les pages ne peuvent pas se
+    /// ranger seules — c'est l'emploi du temps qui range (§12).
+    private var importInvite: some View {
+        Button { isImporting = true } label: {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Importe ton emploi du temps")
+                        .font(KFont.body(13.5, weight: .extraBold))
+                        .foregroundStyle(K.ink)
+                    Text("Tes pages se rangeront seules dans la bonne matiere.")
+                        .font(KFont.body(12, weight: .bold))
+                        .foregroundStyle(K.inkBody)
+                }
+                Spacer(minLength: 0)
+                ChevronGlyph(pointsRight: true)
+                    .stroke(K.ink, style: StrokeStyle(lineWidth: 2.6, lineCap: .round, lineJoin: .round))
+                    .frame(width: 12, height: 12)
+            }
+            .padding(16)
+            .sticker(fill: K.reward, radius: 16)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 28)
+        .padding(.top, 16)
     }
 
     // MARK: En-tete
@@ -124,7 +155,7 @@ struct LibraryView: View {
                             selection = .course(course.id)
                         }
                     }
-                    addCourseButton
+                    importButton
                 }
                 .padding(.horizontal, 28)
                 .padding(.vertical, 14)
@@ -146,18 +177,20 @@ struct LibraryView: View {
         .buttonStyle(.plain)
     }
 
-    /// Provisoire : a l'etape 2 les matieres viennent du fichier ICS.
-    private var addCourseButton: some View {
-        Button {
-            context.insert(Course(name: "Matiere \(courses.count + 1)"))
-            try? context.save()
-        } label: {
-            Glyph(kind: .plus, size: 13)
-                .padding(8)
-                .overlay(Circle().strokeBorder(K.ink, lineWidth: 2.5))
+    /// Ouvre l'import d'emploi du temps : c'est lui qui cree les matieres.
+    private var importButton: some View {
+        Button { isImporting = true } label: {
+            HStack(spacing: 7) {
+                Glyph(kind: .plus, size: 12)
+                Text("Emploi du temps")
+                    .font(KFont.body(12, weight: .extraBold))
+                    .foregroundStyle(K.ink)
+            }
+            .padding(.horizontal, 13)
+            .padding(.vertical, 7)
+            .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Ajouter une matiere")
     }
 
     // MARK: Grille de pages

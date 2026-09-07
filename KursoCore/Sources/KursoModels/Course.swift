@@ -21,6 +21,9 @@ import SwiftData
     /// Inverse de Season.courses. Ajoute pour CloudKit : toute relation a son inverse.
     public var season: Season?
 
+    @Relationship(deleteRule: .cascade, inverse: \TimeSlot.course)
+    public var slots: [TimeSlot]? = []
+
     public init(name: String = "", colorToken: String = "blue") {
         self.name = name
         self.colorToken = colorToken
