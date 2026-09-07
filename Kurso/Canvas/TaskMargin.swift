@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import KursoCore
 import KursoModels
+import PencilKit
 
 /// La marge des propositions de devoirs (§5).
 ///
@@ -14,14 +15,26 @@ struct TaskMargin: View {
 
     var body: some View {
         Group {
-            if !proposals.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    MetaText("Reperé dans tes notes")
-                    ForEach(proposals, id: \.title) { proposal in
-                        card(proposal)
+            if !proposals.isEmpty || !capturedCards.isEmpty {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        if !proposals.isEmpty {
+                            MetaText("Reperé dans tes notes")
+                            ForEach(proposals, id: \.title) { proposal in
+                                card(proposal)
+                            }
+                        }
+                        if !capturedCards.isEmpty {
+                            MetaText("Cartes capturées · \(capturedCards.count)")
+                                .padding(.top, proposals.isEmpty ? 0 : 8)
+                            ForEach(capturedCards) { card in
+                                capturedCard(card)
+                            }
+                        }
+                        Spacer(minLength: 0)
                     }
-                    Spacer(minLength: 0)
                 }
+                .scrollIndicators(.hidden)
                 .padding(16)
                 .frame(width: 240)
                 .background(K.paper)
@@ -31,6 +44,40 @@ struct TaskMargin: View {
             }
         }
         .task(id: page.recognizedText) { refresh() }
+    }
+
+    /// Les cartes nees de cette page, verso compris — le trace, pas un texte.
+    private var capturedCards: [Card] {
+        (page.cards ?? []).sorted { $0.dueAt < $1.dueAt }
+    }
+
+    private func capturedCard(_ card: Card) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(card.question)
+                .font(KFont.body(12.5, weight: .extraBold))
+                .foregroundStyle(K.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            if let image = versoImage(card) {
+                image.resizable().scaledToFit().frame(maxHeight: 54)
+            } else if card.kind == .imageOcclusion {
+                MetaText("Zone masquée")
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .sticker(fill: K.paperAlt, radius: 14, state: .done)
+    }
+
+    private func versoImage(_ card: Card) -> Image? {
+        guard let data = card.answerDrawing,
+              let drawing = try? PKDrawing(data: data),
+              !drawing.bounds.isEmpty else { return nil }
+        let rendered = drawing.image(from: drawing.bounds, scale: 2)
+        #if canImport(UIKit)
+        return Image(uiImage: rendered)
+        #else
+        return Image(nsImage: rendered)
+        #endif
     }
 
     private func card(_ proposal: TaskDetector.Proposal) -> some View {

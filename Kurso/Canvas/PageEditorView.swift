@@ -18,6 +18,8 @@ struct PageEditorView: View {
     @State private var loadFailed = false
     @State private var recognitionTask: Task<Void, Never>?
     @State private var isMasking = false
+    @State private var isCapturing = false
+    @State private var pendingCapture: PKDrawing?
     @Query private var assets: [PDFAsset]
 
     var body: some View {
@@ -42,6 +44,16 @@ struct PageEditorView: View {
                 if isMasking, let index = page.pdfPageIndex {
                     OcclusionLayer(page: page, pageIndex: index) { isMasking = false }
                 }
+                if isCapturing {
+                    CaptureLayer(
+                        drawing: drawing,
+                        onCapture: { captured in
+                            pendingCapture = captured
+                            isCapturing = false
+                        },
+                        onCancel: { isCapturing = false }
+                    )
+                }
             }
             TaskMargin(page: page)
             }
@@ -57,6 +69,12 @@ struct PageEditorView: View {
             #endif
         }
         .background(K.paper)
+        .sheet(item: Binding(
+            get: { pendingCapture.map { CaptureDraft(drawing: $0) } },
+            set: { if $0 == nil { pendingCapture = nil } }
+        )) { draft in
+            CapturePrompt(page: page, answer: draft.drawing) { pendingCapture = nil }
+        }
         .task { load() }
         .onDisappear {
             persist()
@@ -91,6 +109,16 @@ struct PageEditorView: View {
                     .padding(.vertical, 5)
                     .background(K.alertBg, in: Capsule())
                     .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
+            } else if !drawing.strokes.isEmpty && page.pdfAssetID == nil {
+                Button { isCapturing.toggle() } label: {
+                    Text(isCapturing ? "Annuler" : "Capturer une carte")
+                        .font(KFont.body(12, weight: .extraBold))
+                        .foregroundStyle(isCapturing ? K.paperAlt : K.ink)
+                        .padding(.horizontal, 13).padding(.vertical, 7)
+                        .background(isCapturing ? K.brand : .clear, in: Capsule())
+                        .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
+                }
+                .buttonStyle(.plain)
             } else if page.pdfAssetID != nil {
                 Button { isMasking.toggle() } label: {
                     Text(isMasking ? "Terminer" : "Masquer pour reviser")
@@ -161,4 +189,10 @@ struct PageEditorView: View {
             }
         }
     }
+}
+
+/// Enveloppe identifiable, pour presenter la saisie de question en feuille.
+struct CaptureDraft: Identifiable {
+    let id = UUID()
+    let drawing: PKDrawing
 }
