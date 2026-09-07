@@ -22,6 +22,8 @@ struct KursoApp: App {
         }
     }()
 
+    init() { KFont.register() }
+
     var body: some Scene {
         WindowGroup {
             RootView()

@@ -23,12 +23,13 @@ struct MarkdownPane: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             TextEditor(text: $text)
-                .font(.system(.body, design: .monospaced))
+                .font(KFont.mono(13))
+                .foregroundStyle(K.ink)
                 .scrollContentBackground(.hidden)
                 .padding(12)
                 .onChange(of: text) { _, _ in scheduleSave() }
 
-            Divider()
+            Rectangle().fill(K.ink).frame(height: 3)
             footer
         }
         .task {
@@ -46,16 +47,15 @@ struct MarkdownPane: View {
 
     private var footer: some View {
         HStack {
-            Text("^[\(lineCount) ligne](inflect: true)")
+            MetaText("\(lineCount) LIGNES")
             Spacer()
             if page.titleWasEdited {
-                Label("Titre fige", systemImage: "lock")
+                MetaText("TITRE FIGE")
             }
         }
-        .font(.caption)
-        .foregroundStyle(.secondary)
         .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
+        .background(K.paper)
     }
 
     private var lineCount: Int {

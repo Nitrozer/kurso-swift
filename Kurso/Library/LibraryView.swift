@@ -32,11 +32,8 @@ struct LibraryView: View {
                 PageEditorView(page: page)
                     .id(page.id)
             } else {
-                ContentUnavailableView(
-                    "Aucune page ouverte",
-                    systemImage: "doc.text",
-                    description: Text("Choisissez une page, ou creez-en une.")
-                )
+                EmptyState(title: "Aucune page ouverte", message: "Choisissez une page, ou creez-en une.")
+                    .background(K.paper)
             }
         }
     }
@@ -46,23 +43,25 @@ struct LibraryView: View {
     private var sidebar: some View {
         List(selection: $selection) {
             Section {
-                Label("Toutes les pages", systemImage: "tray.full")
-                    .badge(pages.count)
+                sidebarRow("Toutes les pages", count: pages.count)
                     .tag(CahierSelection.allPages)
             }
-            Section("Matieres") {
+            Section {
                 ForEach(courses) { course in
-                    Label(course.name, systemImage: "book.closed")
-                        .badge(pageCount(for: course))
+                    sidebarRow(course.name, count: pageCount(for: course))
                         .tag(CahierSelection.course(course.id))
                 }
                 if courses.isEmpty {
-                    Text("Les matieres arriveront avec l'import de l'emploi du temps.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Text("Les matieres arriveront avec l'emploi du temps.")
+                        .font(KFont.body(12, weight: .bold))
+                        .foregroundStyle(K.inkSoft)
                 }
+            } header: {
+                MetaText("Matieres")
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(K.paper)
         .navigationTitle("Kurso")
         #if os(iOS)
         .toolbar { ToolbarItem(placement: .topBarTrailing) { addCourseButton } }
@@ -80,7 +79,20 @@ struct LibraryView: View {
             context.insert(course)
             try? context.save()
         } label: {
-            Label("Ajouter une matiere", systemImage: "plus")
+            Glyph(kind: .plus, size: 16)
+        }
+        .accessibilityLabel("Ajouter une matiere")
+    }
+
+    private func sidebarRow(_ title: String, count: Int) -> some View {
+        HStack {
+            Text(title)
+                .font(KFont.body(14, weight: .bold))
+                .foregroundStyle(K.ink)
+            Spacer()
+            Text("\(count)")
+                .font(KFont.mono(11))
+                .foregroundStyle(K.inkSoft)
         }
     }
 
@@ -97,13 +109,12 @@ struct LibraryView: View {
                 }
             }
             if visiblePages.isEmpty {
-                ContentUnavailableView(
-                    "Aucune page",
-                    systemImage: "doc",
-                    description: Text("Creez la premiere page de ce cahier.")
-                )
+                EmptyState(title: "Aucune page", message: "Creez la premiere page de ce cahier.")
+                    .listRowBackground(Color.clear)
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(K.paper)
         .navigationTitle(selectionTitle)
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
@@ -114,20 +125,23 @@ struct LibraryView: View {
     }
 
     private func pageRow(_ page: Page) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 3) {
             Text(page.title.isEmpty ? "Page sans titre" : page.title)
+                .font(KFont.body(14, weight: .bold))
+                .foregroundStyle(K.ink)
                 .lineLimit(1)
             HStack(spacing: 6) {
                 Text(page.createdAt, format: .dateTime.hour().minute())
                 if page.writingSeconds >= 60 {
-                    Text("· \(page.writingSeconds / 60) min")
+                    Text("· \(page.writingSeconds / 60) MIN")
                 }
                 if page.drawing == nil {
-                    Text("· vide").foregroundStyle(.tertiary)
+                    Text("· VIDE")
                 }
             }
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(.secondary)
+            .font(KFont.mono(10))
+            .tracking(1.2)
+            .foregroundStyle(K.inkSoft)
         }
     }
 
@@ -139,8 +153,9 @@ struct LibraryView: View {
             try? context.save()
             openedPageID = page.id
         } label: {
-            Label("Nouvelle page", systemImage: "square.and.pencil")
+            Glyph(kind: .pencil, size: 18)
         }
+        .accessibilityLabel("Nouvelle page")
     }
 
     // MARK: Donnees derivees

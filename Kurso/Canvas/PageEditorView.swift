@@ -40,33 +40,38 @@ struct PageEditorView: View {
             }
             #endif
         }
+        .background(K.paper)
         .task { load() }
         .onDisappear { persist() }
     }
 
     private var header: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(page.title.isEmpty ? "Page sans titre" : page.title)
-                    .font(.headline)
-                Text(page.createdAt, format: .dateTime.weekday(.wide).day().month(.wide))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 3) {
+                DisplayText(page.title.isEmpty ? "Page sans titre" : page.title, size: 19)
+                MetaText(page.createdAt.formatted(.dateTime.weekday(.wide).day().month(.wide)))
             }
             Spacer()
             if loadFailed {
                 // Un dessin illisible ne doit jamais etre ecrase en silence (§8).
-                Label("Dessin illisible", systemImage: "exclamationmark.triangle")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
+                Text("DESSIN ILLISIBLE")
+                    .font(KFont.mono(10))
+                    .tracking(1.2)
+                    .foregroundStyle(K.paperAlt)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 5)
+                    .background(K.alertBg, in: Capsule())
+                    .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
             } else {
-                Text("\(displayedSeconds / 60) min d'ecriture")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                MetaText("\(displayedSeconds / 60) MIN D'ECRITURE")
             }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
+        .background(K.paper)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(K.ink).frame(height: 3)
+        }
     }
 
     private func load() {

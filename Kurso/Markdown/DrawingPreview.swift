@@ -13,11 +13,7 @@ struct DrawingPreview: View {
 
     var body: some View {
         if drawing.bounds.isEmpty {
-            ContentUnavailableView(
-                "Page vierge",
-                systemImage: "scribble",
-                description: Text("Rien n'a encore ete ecrit sur cette page.")
-            )
+            EmptyState(title: "Page vierge", message: "Rien n'a encore ete ecrit sur cette page.")
         } else {
             ScrollView([.horizontal, .vertical]) {
                 image
@@ -26,6 +22,7 @@ struct DrawingPreview: View {
                     .frame(maxWidth: .infinity)
                     .padding(20)
             }
+            .background(K.paper)
         }
     }
 
