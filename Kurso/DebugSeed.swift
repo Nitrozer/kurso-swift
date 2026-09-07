@@ -65,6 +65,8 @@ enum DebugSeed {
         player.xp = 320
         player.level = 7
         player.streak = 12
+        player.recordStreak = 31
+        player.freezesRemaining = 2
         context.insert(player)
 
         try? context.save()

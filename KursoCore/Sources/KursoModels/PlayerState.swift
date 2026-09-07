@@ -8,6 +8,8 @@ import SwiftData
     public var xp: Int = 0
     public var level: Int = 1
     public var streak: Int = 0
+    /// Meilleure serie atteinte, affichee a cote de la serie en cours.
+    public var recordStreak: Int = 0
     /// Compteur GLOBAL de 0 a 5, jamais remis a zero par session (§9).
     public var gommesRemaining: Int = 5
     public var lastGommeRegenAt: Date = Date()

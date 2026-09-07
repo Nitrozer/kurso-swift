@@ -36,18 +36,20 @@ struct DayView: View {
                     }
                     StreakCard(
                         streak: player?.streak ?? 0,
+                        record: max(player?.recordStreak ?? 0, player?.streak ?? 0),
                         freezes: player?.freezesRemaining ?? 0,
                         gommes: player?.gommesRemaining ?? GameValues.maxGommes,
-                        week: weekMarks
+                        week: weekMarks,
+                        gribouMood: Gribou.mood(for: gribouContext),
+                        gribouLine: gribouSentence
                     )
                     .frame(maxWidth: currentSlot == nil ? .infinity : 320)
                 }
 
-                gribouCard
-
                 HStack(alignment: .top, spacing: 18) {
-                    questsCard
-                    upcoming.frame(maxWidth: 330)
+                    questsColumn.frame(maxWidth: .infinity)
+                    upcoming.frame(maxWidth: .infinity)
+                    leagueColumn.frame(width: 200)
                 }
 
                 reviewCTA
@@ -74,6 +76,7 @@ struct DayView: View {
             HStack(spacing: 9) {
                 pill(flame: true, value: "\(player?.streak ?? 0)")
                 pill(flame: false, value: "\(player?.xp ?? 0)")
+                gommePill
             }
         }
     }
@@ -105,6 +108,28 @@ struct DayView: View {
             Text(value).font(KFont.display(17)).foregroundStyle(K.ink)
         }
         .padding(.horizontal, 14).padding(.vertical, 8)
+        .background(K.paperAlt, in: Capsule())
+        .overlay(Capsule().strokeBorder(K.ink, lineWidth: 3))
+        .background(alignment: .top) { Capsule().fill(K.ink).offset(y: 3) }
+    }
+
+    /// Les gommes en tete, comme dans le prototype : cinq formes, puis le compte.
+    private var gommePill: some View {
+        let remaining = player?.gommesRemaining ?? GameValues.maxGommes
+        return HStack(spacing: 5) {
+            ForEach(0..<GameValues.maxGommes, id: \.self) { index in
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(index < remaining ? K.eraser : K.paperAlt)
+                    .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .strokeBorder(K.ink, lineWidth: 2.5))
+                    .frame(width: 13, height: 17)
+            }
+            Text("\(remaining)/\(GameValues.maxGommes)")
+                .font(KFont.mono(10.5))
+                .foregroundStyle(K.ink)
+                .fixedSize()
+        }
+        .padding(.horizontal, 13).padding(.vertical, 8)
         .background(K.paperAlt, in: Capsule())
         .overlay(Capsule().strokeBorder(K.ink, lineWidth: 3))
         .background(alignment: .top) { Capsule().fill(K.ink).offset(y: 3) }
@@ -142,6 +167,13 @@ struct DayView: View {
                 }
             }
 
+            HStack(spacing: 9) {
+                courseStat("\(dueCards.count)", "cartes dues")
+                courseStat("\(coursePageCount(slot))", "pages")
+                courseStat(acquisitionLabel(slot), "acquis")
+            }
+            .padding(.top, 4)
+
             Button {
                 openOrCreatePage(for: slot)
             } label: {
@@ -163,6 +195,37 @@ struct DayView: View {
         .sticker(fill: K.brand, radius: 26)
     }
 
+    /// Les encadres du prototype : fond sombre translucide sur le bleu.
+    private func courseStat(_ value: String, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(value).font(KFont.display(20)).foregroundStyle(K.paperAlt)
+            Text(label.uppercased())
+                .font(KFont.body(9, weight: .extraBold))
+                .tracking(0.4)
+                .foregroundStyle(K.paperAlt)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12).padding(.vertical, 11)
+        .background(K.ink.opacity(0.22), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func coursePageCount(_ slot: TimeSlot) -> Int {
+        pages.filter { $0.course?.id == slot.course?.id }.count
+    }
+
+    private func acquisitionLabel(_ slot: TimeSlot) -> String {
+        let withCards = pages.filter { $0.course?.id == slot.course?.id && !($0.cards ?? []).isEmpty }
+        guard !withCards.isEmpty else { return "—" }
+        let mean = withCards.map { page in
+            Freshness.compute(cards: (page.cards ?? []).map {
+                Freshness.CardState(dueAt: $0.dueAt, interval: $0.interval)
+            })
+        }.reduce(0, +) / Double(withCards.count)
+        return "\(Int(mean * 100)) %"
+    }
+
     private func timeRange(_ slot: TimeSlot) -> String {
         let start = slot.start.formatted(.dateTime.hour().minute())
         let end = slot.end.formatted(.dateTime.hour().minute())
@@ -176,29 +239,6 @@ struct DayView: View {
 
     // MARK: Gribou
 
-    /// Il n'est pas un logo posé : c'est lui qui dit où en est la semaine.
-    @ViewBuilder private var gribouCard: some View {
-        if let mood = Gribou.mood(for: gribouContext) {
-            HStack(spacing: 18) {
-                GribouView(mood: mood, size: 130)
-                VStack(alignment: .leading, spacing: 5) {
-                    MetaText(mood.label)
-                    Text(gribouLine(mood))
-                        .font(KFont.body(14, weight: .extraBold))
-                        .foregroundStyle(K.ink)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if mineWear > 0 {
-                        mineGauge
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(18)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .sticker(fill: K.paperAlt, radius: 22)
-        }
-    }
-
     private var gribouContext: Gribou.Context {
         Gribou.Context(
             isPencilDown: false,
@@ -209,6 +249,17 @@ struct DayView: View {
             streak: player?.streak ?? 0,
             hour: Calendar.current.component(.hour, from: now)
         )
+    }
+
+    /// Une phrase qui parle de la journee en cours, pas une formule generique.
+    private var gribouSentence: String {
+        if let slot = currentSlot, remainingMinutes(slot) > 0 {
+            let due = dueCards.count
+            return due > 0
+                ? "Encore \(remainingMinutes(slot)) min de cours. Après, on descend \(due == 1 ? "la carte" : "les \(due) cartes") ?"
+                : "Encore \(remainingMinutes(slot)) min de cours."
+        }
+        return gribouLine(Gribou.mood(for: gribouContext) ?? .idle)
     }
 
     private func gribouLine(_ mood: GribouMood) -> String {
@@ -241,29 +292,40 @@ struct DayView: View {
 
     // MARK: Quêtes
 
-    private var questsCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                DisplayText("Quêtes du jour", size: 20)
+    private var questsColumn: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 6) {
+                sectionTitle("Quêtes du jour")
                 Spacer(minLength: 0)
-                Text("\(questsDone) / 3").font(KFont.mono(12)).foregroundStyle(K.inkSoft)
+                Text("\(questsDone) / 3").font(KFont.mono(11)).foregroundStyle(K.inkSoft)
             }
             ForEach(DailyProgress.dailyQuests, id: \.self) { quest in
                 questRow(quest)
             }
         }
-        .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .sticker(fill: K.paperAlt, radius: 20)
+    }
+
+    /// Titre de colonne suivi d'un chevron : dans le prototype, chacune ouvre
+    /// son ecran.
+    private func sectionTitle(_ text: String) -> some View {
+        HStack(spacing: 6) {
+            DisplayText(text, size: 20)
+            ChevronGlyph(pointsRight: true)
+                .stroke(K.brand, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                .frame(width: 11, height: 11)
+        }
     }
 
     private func questRow(_ quest: DailyProgress.QuestKind) -> some View {
         let done = isDone(quest)
         return HStack(spacing: 12) {
-            CheckBadge(kind: .quest, isChecked: done, size: 24)
+            CheckBadge(kind: .quest, isChecked: done, size: 22)
             VStack(alignment: .leading, spacing: 2) {
                 Text(quest.title)
-                    .font(KFont.body(13.5, weight: .extraBold))
+                    .font(KFont.body(13, weight: .extraBold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
                     .foregroundStyle(done ? K.inkSoft : K.ink)
                     .strikethrough(done, color: K.inkSoft)
                 if !done, quest.target > 1 {
@@ -272,12 +334,12 @@ struct DayView: View {
             }
             Spacer(minLength: 0)
             Text("+\(quest.xp)")
-                .font(KFont.display(15))
-                .foregroundStyle(done ? K.inkSoft : K.ink)
-                .padding(.horizontal, 10).padding(.vertical, 3)
-                .background(done ? .clear : K.reward, in: Capsule())
-                .overlay(Capsule().strokeBorder(done ? K.pendingLine : K.ink, lineWidth: 2.5))
+                .font(KFont.display(14))
+                .foregroundStyle(done ? K.inkSoft : K.brand)
         }
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .sticker(fill: K.paperAlt, radius: 16, state: done ? .done : .rest)
     }
 
     private func progress(_ quest: DailyProgress.QuestKind) -> Int {
@@ -295,31 +357,58 @@ struct DayView: View {
 
     // MARK: La suite
 
-    @ViewBuilder private var upcoming: some View {
-        if !nextSlots.isEmpty {
-            VStack(alignment: .leading, spacing: 11) {
-                DisplayText("La suite", size: 20)
-                ForEach(nextSlots, id: \.id) { slot in
-                    HStack(spacing: 14) {
-                        Text(slot.start.formatted(.dateTime.hour().minute()))
-                            .font(KFont.mono(12))
-                            .foregroundStyle(K.inkSoft)
-                            .frame(width: 52, alignment: .leading)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(slot.course?.name ?? slot.summary)
-                                .font(KFont.body(13.5, weight: .extraBold))
-                                .foregroundStyle(K.ink)
-                            if let location = slot.location {
-                                MetaText(location)
-                            }
-                        }
-                        Spacer(minLength: 0)
-                    }
-                }
+    private var upcoming: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            sectionTitle("La suite")
+            if nextSlots.isEmpty {
+                Text("Plus de cours aujourd'hui.")
+                    .font(KFont.body(12, weight: .bold))
+                    .foregroundStyle(K.inkSoft)
             }
-            .padding(20)
+            ForEach(nextSlots, id: \.id) { slot in
+                HStack(spacing: 12) {
+                    Text(slot.start.formatted(.dateTime.hour().minute()))
+                        .font(KFont.display(17))
+                        .foregroundStyle(K.ink)
+                        .frame(width: 52, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(slot.course?.name ?? slot.summary)
+                            .font(KFont.body(13.5, weight: .extraBold))
+                            .foregroundStyle(K.ink)
+                            .lineLimit(1)
+                        if let location = slot.location {
+                            Text(location)
+                                .font(KFont.body(11, weight: .bold))
+                                .foregroundStyle(K.inkSoft)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 11)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .sticker(fill: K.paperAlt, radius: 16, state: .done)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// La ligue demande des amis, qu'aucune donnee ne fournit encore. On dit ce
+    /// qui manque plutot que d'inventer un classement.
+    private var leagueColumn: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            sectionTitle("Ligue")
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Pas encore d'amis")
+                    .font(KFont.body(12.5, weight: .extraBold))
+                    .foregroundStyle(K.ink)
+                Text("La ligue se joue à douze, entre amis ajoutés. Personne ne descend.")
+                    .font(KFont.body(11, weight: .bold))
+                    .foregroundStyle(K.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .sticker(fill: K.paperAlt, radius: 20)
+            .sticker(fill: K.paperAlt, radius: 16, state: .upcoming)
         }
     }
 
@@ -333,10 +422,10 @@ struct DayView: View {
                         .font(KFont.display(18))
                         .foregroundStyle(K.ink)
                     Spacer(minLength: 0)
-                    Text("+\(GameValues.xpPerCard * dueCards.count)")
-                        .font(KFont.display(15))
+                    Text("+\(GameValues.xpPerCard * dueCards.count) XP")
+                        .font(KFont.display(14))
                         .foregroundStyle(K.reward)
-                        .padding(.horizontal, 10).padding(.vertical, 3)
+                        .padding(.horizontal, 12).padding(.vertical, 5)
                         .background(K.ink, in: Capsule())
                 }
                 .padding(.horizontal, 20).padding(.vertical, 16)

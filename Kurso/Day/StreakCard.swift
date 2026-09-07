@@ -7,9 +7,12 @@ import KursoModels
 /// en jours, la bande de la semaine, puis les gels et les gommes.
 struct StreakCard: View {
     let streak: Int
+    let record: Int
     let freezes: Int
     let gommes: Int
     let week: [DayMark]
+    let gribouMood: GribouMood?
+    let gribouLine: String
 
     struct DayMark: Identifiable {
         let id = UUID()
@@ -28,26 +31,36 @@ struct StreakCard: View {
                         Text("\(streak)").font(KFont.display(40)).foregroundStyle(K.ink)
                         Text("jours").font(KFont.body(14, weight: .extraBold)).foregroundStyle(K.inkSoft)
                     }
-                    Text(note)
+                    Text("record : \(record) jour\(record > 1 ? "s" : "")")
                         .font(KFont.body(12, weight: .extraBold))
                         .foregroundStyle(K.flame)
                 }
             }
 
-            weekStrip.padding(.top, 16)
-            resources.padding(.top, 14)
+            weekStrip.padding(.top, 14)
+            resources.padding(.top, 12)
+
+            Text("Une gomme se regagne toutes les 4 h. Un gel rattrape une journée manquée.")
+                .font(KFont.body(10.5, weight: .bold))
+                .foregroundStyle(K.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 8)
+
+            if let gribouMood {
+                HStack(alignment: .center, spacing: 12) {
+                    GribouView(mood: gribouMood, size: 74)
+                    Text(gribouLine)
+                        .font(KFont.body(12.5, weight: .extraBold))
+                        .foregroundStyle(K.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .padding(.top, 6)
+            }
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .sticker(fill: K.paperAlt, radius: 26)
-    }
-
-    private var note: String {
-        switch streak {
-        case 0:  "À toi de commencer."
-        case 1:  "Premier jour."
-        default: "Ne casse pas la chaîne."
-        }
     }
 
     /// Les sept jours de la semaine. Un jour à venir est en pointillés : on ne
@@ -58,7 +71,7 @@ struct StreakCard: View {
                 VStack(spacing: 5) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .fill(day.done ? K.success : K.paperAlt)
+                            .fill(day.done ? K.flame : (day.isToday ? Color(token: "#FFF1E8") : K.paperAlt))
                         RoundedRectangle(cornerRadius: 9, style: .continuous)
                             .strokeBorder(K.ink, style: StrokeStyle(
                                 lineWidth: 2.5,
@@ -84,12 +97,12 @@ struct StreakCard: View {
 
     private var resources: some View {
         HStack(spacing: 8) {
-            resourceBox(count: freezes, label: freezes > 1 ? "gels" : "gel", tint: Color(token: "#EAF6FF")) {
+            resourceBox(count: "\(freezes) en réserve", label: "gels", tint: Color(token: "#EAF6FF")) {
                 SnowflakeShape()
                     .stroke(K.ink, style: StrokeStyle(lineWidth: 2.6, lineCap: .round))
                     .frame(width: 12, height: 12)
             }
-            resourceBox(count: gommes, label: gommes > 1 ? "gommes" : "gomme", tint: Color(token: "#FFF1F3")) {
+            resourceBox(count: "\(gommes) / \(GameValues.maxGommes)", label: "gommes", tint: Color(token: "#FFF1F3")) {
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .fill(K.eraser)
                     .overlay(RoundedRectangle(cornerRadius: 3, style: .continuous).strokeBorder(K.ink, lineWidth: 2))
@@ -99,7 +112,7 @@ struct StreakCard: View {
     }
 
     private func resourceBox<Icon: View>(
-        count: Int, label: String, tint: Color, @ViewBuilder icon: () -> Icon
+        count: String, label: String, tint: Color, @ViewBuilder icon: () -> Icon
     ) -> some View {
         HStack(spacing: 9) {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
@@ -107,9 +120,12 @@ struct StreakCard: View {
                 .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(K.ink, lineWidth: 2.5))
                 .frame(width: 22, height: 22)
                 .overlay { icon() }
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text("\(count)").font(KFont.display(15)).foregroundStyle(K.ink)
-                Text(label).font(KFont.body(11, weight: .extraBold)).foregroundStyle(K.inkSoft)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(count).font(KFont.display(15)).foregroundStyle(K.ink)
+                Text(label.uppercased())
+                    .font(KFont.body(8.5, weight: .extraBold))
+                    .tracking(0.7)
+                    .foregroundStyle(K.inkSoft)
             }
             Spacer(minLength: 0)
         }
