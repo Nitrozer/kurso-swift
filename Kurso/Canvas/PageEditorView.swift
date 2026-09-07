@@ -17,6 +17,8 @@ struct PageEditorView: View {
     @State private var displayedSeconds = 0
     @State private var loadFailed = false
     @State private var recognitionTask: Task<Void, Never>?
+    @State private var isMasking = false
+    @Query private var assets: [PDFAsset]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,7 +26,12 @@ struct PageEditorView: View {
 
             #if os(iOS)
             HStack(spacing: 0) {
-            DrawingCanvas(
+            ZStack {
+                if let asset = pdfAsset, let index = page.pdfPageIndex {
+                    PDFBackground(asset: asset, pageIndex: index)
+                        .padding(8)
+                }
+                DrawingCanvas(
                 drawing: $drawing,
                 onBeginWriting: { clock.begin(at: .now) },
                 onEndWriting: {
@@ -32,6 +39,10 @@ struct PageEditorView: View {
                     persist()
                 }
             )
+                if isMasking, let index = page.pdfPageIndex {
+                    OcclusionLayer(page: page, pageIndex: index) { isMasking = false }
+                }
+            }
             TaskMargin(page: page)
             }
             #else
@@ -80,6 +91,16 @@ struct PageEditorView: View {
                     .padding(.vertical, 5)
                     .background(K.alertBg, in: Capsule())
                     .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
+            } else if page.pdfAssetID != nil {
+                Button { isMasking.toggle() } label: {
+                    Text(isMasking ? "Terminer" : "Masquer pour reviser")
+                        .font(KFont.body(12, weight: .extraBold))
+                        .foregroundStyle(isMasking ? K.paperAlt : K.ink)
+                        .padding(.horizontal, 13).padding(.vertical, 7)
+                        .background(isMasking ? K.brand : .clear, in: Capsule())
+                        .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
+                }
+                .buttonStyle(.plain)
             } else {
                 MetaText("\(displayedSeconds / 60) MIN D'ECRITURE")
             }
@@ -90,6 +111,11 @@ struct PageEditorView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(K.ink).frame(height: 3)
         }
+    }
+
+    private var pdfAsset: PDFAsset? {
+        guard let id = page.pdfAssetID else { return nil }
+        return assets.first { $0.id == id }
     }
 
     private func load() {

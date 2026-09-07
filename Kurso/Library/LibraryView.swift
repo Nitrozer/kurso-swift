@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 import KursoCore
 import KursoModels
 
@@ -21,6 +22,7 @@ struct LibraryView: View {
     @State private var openedPage: Page?
     @State private var query = ""
     @State private var isImporting = false
+    @State private var isPickingPDF = false
     @FocusState private var isSearching: Bool
 
     var body: some View {
@@ -41,6 +43,11 @@ struct LibraryView: View {
         }
         .sheet(isPresented: $isImporting) {
             TimetableOnboardingView()
+        }
+        .fileImporter(isPresented: $isPickingPDF, allowedContentTypes: [.pdf]) { result in
+            guard case .success(let url) = result else { return }
+            let pages = try? PDFImporter.importFile(at: url, course: selectedCourse, context: context)
+            openedPage = pages?.first
         }
     }
 
@@ -160,6 +167,7 @@ struct LibraryView: View {
                         }
                     }
                     importButton
+                    pdfButton
                 }
                 .padding(.horizontal, 28)
                 .padding(.vertical, 14)
@@ -177,6 +185,22 @@ struct LibraryView: View {
                 .padding(.vertical, 7)
                 .background(isActive ? K.ink : .clear, in: Capsule())
                 .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Depot d'un polycopie : une page Kurso par diapo.
+    private var pdfButton: some View {
+        Button { isPickingPDF = true } label: {
+            HStack(spacing: 7) {
+                Glyph(kind: .plus, size: 12)
+                Text("Deposer un PDF")
+                    .font(KFont.body(12, weight: .extraBold))
+                    .foregroundStyle(K.ink)
+            }
+            .padding(.horizontal, 13)
+            .padding(.vertical, 7)
+            .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
         }
         .buttonStyle(.plain)
     }
