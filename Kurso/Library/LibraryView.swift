@@ -123,8 +123,12 @@ struct LibraryView: View {
     private var newPageButton: some View {
         Button {
             let page = Page(createdAt: .now)
-            page.course = selectedCourse
             context.insert(page)
+            // Le creneau en cours prime sur le filtre affiche : c'est l'emploi
+            // du temps qui range, pas la colonne qu'on regardait (§12).
+            if PageAttachment.attach(page, context: context) == nil {
+                page.course = selectedCourse
+            }
             try? context.save()
             openedPage = page
         } label: {
