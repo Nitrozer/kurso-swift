@@ -13,6 +13,7 @@ struct ReviewSessionView: View {
     @State private var session: ReviewSession?
     @State private var isRevealed = false
     @State private var player: PlayerState?
+    @State private var isMistakeBookRun = false
 
     var body: some View {
         Group {
@@ -54,8 +55,41 @@ struct ReviewSessionView: View {
             Button("Commencer") { begin() }
                 .buttonStyle(StickerButtonStyle(kind: .primary))
                 .frame(maxWidth: 280)
+
+            if !mistakeCards.isEmpty { mistakeBookEntry }
         }
         .padding(28)
+    }
+
+    /// Le carnet des ratés : les cartes echouees deux fois. A dix, c'est un boss.
+    private var mistakeBookEntry: some View {
+        Button { begin(mistakeBookOnly: true) } label: {
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 8) {
+                    Text(isBoss ? "BOSS" : "CARNET DES RATÉS")
+                        .font(KFont.body(10, weight: .extraBold))
+                        .tracking(0.8)
+                        .foregroundStyle(K.paperAlt)
+                        .padding(.horizontal, 9).padding(.vertical, 3)
+                        .background(isBoss ? K.alertBg : K.ink, in: Capsule())
+                    Spacer(minLength: 0)
+                }
+                Text("\(mistakeCards.count) carte\(mistakeCards.count > 1 ? "s" : "") ratée\(mistakeCards.count > 1 ? "s" : "") deux fois")
+                    .font(KFont.body(13.5, weight: .extraBold))
+                    .foregroundStyle(K.ink)
+                Text(isBoss
+                     ? "Vide-le en une session sans faute pour une fiche or."
+                     : "Vide-le en une session sans faute pour remettre les compteurs à zéro.")
+                    .font(KFont.body(12, weight: .bold))
+                    .foregroundStyle(K.inkBody)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(16)
+            .frame(maxWidth: 380, alignment: .leading)
+            .sticker(fill: isBoss ? K.reward : K.paperAlt, radius: 16)
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 10)
     }
 
     // MARK: La carte
@@ -163,9 +197,7 @@ struct ReviewSessionView: View {
     private func summary(_ session: ReviewSession, ranOut: Bool) -> some View {
         VStack(spacing: 16) {
             DisplayText(ranOut ? "Plus de gommes" : "Session terminée", size: 30)
-            Text(ranOut
-                 ? "Les \(session.unseenCount) cartes non vues ne sont pas pénalisées. Elles reviendront comme prévu."
-                 : "\(session.xpEarned) XP gagnés\(session.isPerfect ? " · sans une faute" : "")")
+            Text(summaryMessage(session, ranOut: ranOut))
                 .font(KFont.body(14, weight: .bold))
                 .foregroundStyle(K.inkBody)
                 .multilineTextAlignment(.center)
@@ -177,6 +209,26 @@ struct ReviewSessionView: View {
         }
         .padding(28)
         .frame(maxWidth: 460)
+    }
+
+    private func summaryMessage(_ session: ReviewSession, ranOut: Bool) -> String {
+        if ranOut {
+            return "Les \(session.unseenCount) cartes non vues ne sont pas pénalisées. Elles reviendront comme prévu."
+        }
+        var text = "\(session.xpEarned) XP gagnés\(session.isPerfect ? " · sans une faute" : "")"
+        if isMistakeBookRun {
+            let reward = MistakeBook.evaluate(
+                bookSize: session.cardCount,
+                answered: session.index,
+                failures: session.mistakes
+            )
+            if reward.goldCard {
+                text += "\nCarnet vidé — fiche or débloquée."
+            } else if reward.clearedEntirely {
+                text += "\nCarnet vidé, compteurs remis à zéro."
+            }
+        }
+        return text
     }
 
     // MARK: Gommes
@@ -200,6 +252,13 @@ struct ReviewSessionView: View {
     private var dueCards: [Card] {
         allCards.filter { $0.dueAt <= .now }.sorted { $0.dueAt < $1.dueAt }
     }
+
+    /// Toutes les cartes du carnet, dues ou non : on vient les affronter.
+    private var mistakeCards: [Card] {
+        allCards.filter { MistakeBook.contains(lapses: $0.lapses) }
+    }
+
+    private var isBoss: Bool { MistakeBook.isBoss(count: mistakeCards.count) }
 
     private var current: Card? {
         guard let session, session.index < queue.count else { return nil }
@@ -227,9 +286,10 @@ struct ReviewSessionView: View {
         try? context.save()
     }
 
-    private func begin() {
-        let size = ReviewSession.defaultSize
-        queue = Array(dueCards.prefix(size))
+    private func begin(mistakeBookOnly: Bool = false) {
+        isMistakeBookRun = mistakeBookOnly
+        // Le carnet se joue en entier : le vider a moitie ne compte pas.
+        queue = mistakeBookOnly ? mistakeCards : Array(dueCards.prefix(ReviewSession.defaultSize))
         session = ReviewSession(
             cardCount: queue.count,
             gommes: player?.gommesRemaining ?? GameValues.maxGommes,
@@ -260,6 +320,18 @@ struct ReviewSessionView: View {
             player.shavings += answer == .failed ? 0 : GameValues.shavingsPerCard
         }
         try? context.save()
+
+        // Carnet vide en une session sans faute : les compteurs repartent a zero.
+        if isMistakeBookRun, session.outcome == .finished,
+           MistakeBook.evaluate(bookSize: session.cardCount,
+                                answered: session.index,
+                                failures: session.mistakes).clearedEntirely {
+            for card in queue {
+                card.lapses = 0
+                card.isInMistakeBook = false
+            }
+            try? context.save()
+        }
 
         self.session = session
         isRevealed = false
