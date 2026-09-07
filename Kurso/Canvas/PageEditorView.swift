@@ -30,11 +30,14 @@ struct PageEditorView: View {
                 }
             )
             #else
-            ContentUnavailableView(
-                "L'ecriture se fait sur iPad",
-                systemImage: "applepencil",
-                description: Text("Le canevas PencilKit n'existe pas sur macOS. Le volet markdown prendra sa place ici.")
-            )
+            // Sur Mac : le manuscrit se relit, le markdown s'ecrit. PKCanvasView
+            // n'existe pas sur macOS, mais PKDrawing sait se rendre en image.
+            HSplitView {
+                DrawingPreview(drawing: drawing)
+                    .frame(minWidth: 260, idealWidth: 420)
+                MarkdownPane(page: page)
+                    .frame(minWidth: 320)
+            }
             #endif
         }
         .task { load() }
