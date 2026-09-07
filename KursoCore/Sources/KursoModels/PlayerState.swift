@@ -21,5 +21,11 @@ import SwiftData
     /// true ⇒ gommes illimitees : le compteur n'est plus decremente.
     public var hasFullVersion: Bool = false
 
+    /// Prenom affiche dans l'en-tete du jour. Vide tant qu'il n'est pas donne :
+    /// c'est une preference d'affichage, pas une identite (§12, pas de compte).
+    public var displayName: String = ""
+    /// L'onboarding ne se rejoue pas.
+    public var hasCompletedOnboarding: Bool = false
+
     public init() {}
 }

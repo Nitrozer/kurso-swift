@@ -9,6 +9,9 @@ import KursoModels
 /// Rien n'est cree avant la validation : le regroupement est une proposition,
 /// jamais une decision prise a la place de l'etudiant.
 struct TimetableOnboardingView: View {
+    /// Fourni pendant l'onboarding : l'ecran enchaine au lieu de se fermer.
+    var onFinish: (() -> Void)?
+
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
 
@@ -48,6 +51,10 @@ struct TimetableOnboardingView: View {
         .padding(.horizontal, 28)
         .padding(.top, 26)
         .padding(.bottom, 18)
+    }
+
+    private func close() {
+        if let onFinish { onFinish() } else { dismiss() }
     }
 
     private var hasTimetable: Bool { !slots.isEmpty }
@@ -93,7 +100,7 @@ struct TimetableOnboardingView: View {
             .scrollIndicators(.hidden)
 
             HStack(spacing: 12) {
-                Button("Fermer") { dismiss() }
+                Button("Fermer") { close() }
                     .buttonStyle(StickerButtonStyle(kind: .secondary))
                 Button("Remplacer") {
                     url = timetables.first?.url ?? ""
@@ -151,9 +158,17 @@ struct TimetableOnboardingView: View {
                         .strokeBorder(K.ink, lineWidth: 2.5))
             }
 
-            Button(isLoading ? "Lecture…" : "Importer") { load() }
-                .buttonStyle(StickerButtonStyle(kind: .primary))
-                .disabled(isLoading || url.trimmingCharacters(in: .whitespaces).isEmpty)
+            HStack(spacing: 12) {
+                // Un lien ENT n'est pas toujours sous la main le premier jour :
+                // l'import se refait depuis les cahiers a tout moment.
+                if onFinish != nil {
+                    Button("Plus tard") { close() }
+                        .buttonStyle(StickerButtonStyle(kind: .secondary))
+                }
+                Button(isLoading ? "Lecture…" : "Importer") { load() }
+                    .buttonStyle(StickerButtonStyle(kind: .primary))
+                    .disabled(isLoading || url.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
 
             Spacer(minLength: 0)
         }
@@ -247,6 +262,6 @@ struct TimetableOnboardingView: View {
 
     private func commit() {
         TimetableImporter.commit(proposals: proposals, events: events, url: url, context: context)
-        dismiss()
+        close()
     }
 }

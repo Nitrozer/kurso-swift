@@ -96,7 +96,10 @@ struct DayView: View {
 
     private var greeting: String {
         let streak = player?.streak ?? 0
-        return streak > 0 ? "Salut, \(streak) jour\(streak > 1 ? "s" : "") d'affilée." : "Salut."
+        let who = (player?.displayName ?? "").isEmpty ? "" : " \(player?.displayName ?? "")"
+        return streak > 0
+            ? "Salut\(who), \(streak) jour\(streak > 1 ? "s" : "") d'affilée."
+            : "Salut\(who)."
     }
 
     private func pill(flame: Bool, value: String) -> some View {
