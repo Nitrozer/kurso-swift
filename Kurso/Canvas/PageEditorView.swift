@@ -20,6 +20,7 @@ struct PageEditorView: View {
     @State private var isMasking = false
     @State private var isCapturing = false
     @State private var pendingCapture: PKDrawing?
+    @State private var canvasHandle = CanvasHandle()
     @Query private var assets: [PDFAsset]
 
     var body: some View {
@@ -47,6 +48,7 @@ struct PageEditorView: View {
                 if isCapturing {
                     CaptureLayer(
                         drawing: drawing,
+                        handle: canvasHandle,
                         onCapture: { captured in
                             pendingCapture = captured
                             isCapturing = false

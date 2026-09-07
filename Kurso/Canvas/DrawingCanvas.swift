@@ -5,8 +5,31 @@ import PencilKit
 /// Le canevas d'ecriture. iOS uniquement : le SDK macOS fournit les types
 /// PencilKit (PKDrawing, PKStroke) mais pas `PKCanvasView`. Sur Mac, une page
 /// s'affiche et s'annote en markdown — c'est ce que prevoit le §11.
+/// Donne acces au canevas vivant.
+///
+/// La capture doit convertir des coordonnees de vue en coordonnees de dessin,
+/// ce qui demande le defilement et le zoom courants — deux choses que seule la
+/// vue connait.
+@Observable final class CanvasHandle {
+    weak var canvas: PKCanvasView?
+
+    /// Convertit un rectangle de la vue vers l'espace du dessin.
+    func toDrawing(_ rect: CGRect) -> CGRect {
+        guard let canvas else { return rect }
+        let zoom = max(canvas.zoomScale, 0.01)
+        let offset = canvas.contentOffset
+        return CGRect(
+            x: (rect.minX + offset.x) / zoom,
+            y: (rect.minY + offset.y) / zoom,
+            width: rect.width / zoom,
+            height: rect.height / zoom
+        )
+    }
+}
+
 struct DrawingCanvas: UIViewRepresentable {
     @Binding var drawing: PKDrawing
+    var handle: CanvasHandle?
     /// Le stylet touche la surface.
     var onBeginWriting: () -> Void
     /// Le stylet quitte la surface : c'est aussi le moment ou l'on enregistre.
@@ -29,6 +52,7 @@ struct DrawingCanvas: UIViewRepresentable {
         canvas.isOpaque = false
 
         context.coordinator.attachToolPicker(to: canvas)
+        handle?.canvas = canvas
         return canvas
     }
 

@@ -9,6 +9,7 @@ import PencilKit
 /// "inser°" reste "inser°" » — donc on garde le PKDrawing, pas du texte reconnu.
 struct CaptureLayer: View {
     let drawing: PKDrawing
+    let handle: CanvasHandle
     /// Rend les traits entoures, ou rien si la selection est vide.
     var onCapture: (PKDrawing) -> Void
     var onCancel: () -> Void
@@ -56,35 +57,32 @@ struct CaptureLayer: View {
                     .onEnded { _ in
                         defer { rect = nil }
                         guard let selection = rect, selection.width > 20, selection.height > 20 else { return }
-                        let captured = strokes(in: selection, viewSize: geo.size)
+                        let captured = strokes(in: selection)
                         captured.strokes.isEmpty ? onCancel() : onCapture(captured)
                     }
             )
         }
     }
 
-    /// Les traits dont le centre tombe dans la selection.
+    /// Les traits dont la majorite de la boite tombe dans la selection.
     ///
-    /// Le centre plutot que l'intersection : entourer une ligne ne doit pas
-    /// embarquer la moitie de celle du dessus.
-    private func strokes(in selection: CGRect, viewSize: CGSize) -> PKDrawing {
-        let bounds = drawing.bounds
-        guard !bounds.isEmpty, viewSize.width > 0, viewSize.height > 0 else { return PKDrawing() }
-
-        // Le canevas defile : la selection est en coordonnees de vue, les traits
-        // en coordonnees de dessin. On passe par les fractions.
-        let scaleX = bounds.width / viewSize.width
-        let scaleY = bounds.height / viewSize.height
-        let inDrawing = CGRect(
-            x: bounds.minX + selection.minX * scaleX,
-            y: bounds.minY + selection.minY * scaleY,
-            width: selection.width * scaleX,
-            height: selection.height * scaleY
-        )
+    /// La majorite plutot que le centre : sur une ecriture cursive, une ligne
+    /// entiere peut etre un seul trait dont le centre echappe au cercle. Et
+    /// plutot que la simple intersection, qui embarquerait la ligne du dessus
+    /// des qu'on la frole.
+    private func strokes(in selection: CGRect) -> PKDrawing {
+        // Coordonnees de vue -> coordonnees de dessin, via le defilement et le
+        // zoom reels. Sans ca, une selection tracee sur un canevas defile
+        // designe la mauvaise zone.
+        let target = handle.toDrawing(selection)
 
         let selected = drawing.strokes.filter { stroke in
             let box = stroke.renderBounds
-            return inDrawing.contains(CGPoint(x: box.midX, y: box.midY))
+            let area = box.width * box.height
+            guard area > 0 else { return target.contains(CGPoint(x: box.midX, y: box.midY)) }
+            let overlap = box.intersection(target)
+            guard !overlap.isNull else { return false }
+            return (overlap.width * overlap.height) / area >= 0.5
         }
         return PKDrawing(strokes: selected)
     }
