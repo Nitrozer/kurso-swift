@@ -18,6 +18,12 @@ import SwiftData
     public var drawing: Data?
     /// Volet Mac ; peut coexister avec le drawing.
     public var markdown: String = ""
+
+    /// Texte reconnu dans le manuscrit, pour la recherche uniquement.
+    ///
+    /// Il ne remplace jamais le trace et n'est jamais montre a la place des
+    /// notes : le §4 interdit de reecrire ce que l'etudiant a ecrit.
+    public var recognizedText: String = ""
     /// Si la page annote un PDF depose.
     public var pdfAssetID: UUID?
     public var pdfPageIndex: Int?

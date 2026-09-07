@@ -53,8 +53,21 @@ struct ChevronGlyph: Shape {
     }
 }
 
+/// Loupe — cercle et manche, d'apres le trace du prototype.
+struct SearchGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        let u = min(rect.width, rect.height) / 24
+        var p = Path()
+        p.addEllipse(in: CGRect(x: rect.minX + 4 * u, y: rect.minY + 4 * u,
+                                width: 13.2 * u, height: 13.2 * u))
+        p.move(to: CGPoint(x: rect.minX + 15.4 * u, y: rect.minY + 15.4 * u))
+        p.addLine(to: CGPoint(x: rect.minX + 19.8 * u, y: rect.minY + 19.8 * u))
+        return p
+    }
+}
+
 struct Glyph: View {
-    enum Kind { case plus, pencil }
+    enum Kind { case plus, pencil, search }
     var kind: Kind
     var size: CGFloat = 18
     var color: Color = K.ink
@@ -64,6 +77,7 @@ struct Glyph: View {
             switch kind {
             case .plus:   PlusGlyph().stroke(color, style: glyphStroke)
             case .pencil: PencilGlyph().stroke(color, style: glyphStroke)
+            case .search: SearchGlyph().stroke(color, style: StrokeStyle(lineWidth: 2.6, lineCap: .round))
             }
         }
         .frame(width: size, height: size)

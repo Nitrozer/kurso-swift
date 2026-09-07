@@ -16,6 +16,7 @@ struct PageEditorView: View {
     /// Affiche le temps d'ecriture reel, pas le temps d'ecran.
     @State private var displayedSeconds = 0
     @State private var loadFailed = false
+    @State private var recognitionTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -43,7 +44,9 @@ struct PageEditorView: View {
         }
         .background(K.paper)
         .task { load() }
-        .onDisappear { persist() }
+        .onDisappear {
+            persist()
+        }
     }
 
     private var header: some View {
@@ -105,5 +108,28 @@ struct PageEditorView: View {
         displayedSeconds = page.writingSeconds
         page.drawing = drawing.dataRepresentation()
         try? context.save()
+        scheduleRecognition()
+    }
+
+    /// La reconnaissance tourne apres l'enregistrement, jamais pendant l'ecriture :
+    /// Vision sur une page entiere prend le temps qu'il faut, et rien ne doit
+    /// disputer le fil principal au stylet.
+    private func scheduleRecognition() {
+        recognitionTask?.cancel()
+        let snapshot = drawing
+        recognitionTask = Task {
+            let text = await HandwritingRecognizer.recognize(snapshot)
+            guard !Task.isCancelled, !text.isEmpty else { return }
+            await MainActor.run {
+                page.recognizedText = text
+                // §4 : la premiere ligne reconnue fait le titre, sauf si
+                // l'etudiant l'a edite — on n'y retouche alors plus jamais.
+                if !page.titleWasEdited, page.markdown.isEmpty,
+                   let derived = PageTitle.derive(from: text) {
+                    page.title = derived
+                }
+                try? context.save()
+            }
+        }
     }
 }

@@ -19,6 +19,8 @@ struct LibraryView: View {
 
     @State private var selection: CahierSelection = .allPages
     @State private var openedPage: Page?
+    @State private var query = ""
+    @FocusState private var isSearching: Bool
 
     var body: some View {
         if let page = openedPage {
@@ -46,6 +48,7 @@ struct LibraryView: View {
                 DisplayText("Mes pages", size: 30)
             }
             Spacer(minLength: 0)
+            searchField
             newPageButton
         }
         .padding(.horizontal, 28)
@@ -59,6 +62,31 @@ struct LibraryView: View {
     private var headerMeta: String {
         let name = selectedCourse?.name ?? "Toutes les matieres"
         return "\(name) · \(visiblePages.count) pages"
+    }
+
+    /// « Chercher dans l'ecriture » : la requete porte sur le texte reconnu,
+    /// jamais sur une reecriture des notes.
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Glyph(kind: .search, size: 14, color: K.inkSoft)
+            TextField("Chercher dans l'ecriture", text: $query)
+                .textFieldStyle(.plain)
+                .font(KFont.body(12, weight: .bold))
+                .foregroundStyle(K.ink)
+                .focused($isSearching)
+                .frame(width: 190)
+            if !query.isEmpty {
+                Button { query = "" } label: {
+                    Glyph(kind: .plus, size: 11, color: K.inkSoft)
+                        .rotationEffect(.degrees(45))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Effacer la recherche")
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
     }
 
     private var newPageButton: some View {
@@ -135,7 +163,9 @@ struct LibraryView: View {
     // MARK: Grille de pages
 
     @ViewBuilder private var grid: some View {
-        if visiblePages.isEmpty {
+        if !query.isEmpty {
+            searchResults
+        } else if visiblePages.isEmpty {
             EmptyState(title: "Aucune page", message: "Creez la premiere page de ce cahier.")
         } else {
             ScrollView {
@@ -152,6 +182,31 @@ struct LibraryView: View {
                             .padding(.horizontal, 28)
                         }
                     }
+                }
+                .padding(.vertical, 20)
+            }
+            .scrollIndicators(.hidden)
+        }
+    }
+
+    @ViewBuilder private var searchResults: some View {
+        let hits = TextSearch.rank(visiblePages, query: query) { $0.recognizedText }
+        if hits.isEmpty {
+            EmptyState(
+                title: "Rien trouve",
+                message: "Aucune page ne contient « \(query) ». La recherche porte sur l'ecriture reconnue."
+            )
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 11) {
+                    MetaText("\(hits.count) resultats")
+                        .padding(.horizontal, 28)
+                    LazyVGrid(columns: columns, spacing: 16) {
+                        ForEach(hits, id: \.item.id) { hit in
+                            PageCard(page: hit.item) { openedPage = hit.item }
+                        }
+                    }
+                    .padding(.horizontal, 28)
                 }
                 .padding(.vertical, 20)
             }
