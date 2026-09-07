@@ -23,6 +23,7 @@ struct PageEditorView: View {
             header
 
             #if os(iOS)
+            HStack(spacing: 0) {
             DrawingCanvas(
                 drawing: $drawing,
                 onBeginWriting: { clock.begin(at: .now) },
@@ -31,6 +32,8 @@ struct PageEditorView: View {
                     persist()
                 }
             )
+            TaskMargin(page: page)
+            }
             #else
             // Sur Mac : le manuscrit se relit, le markdown s'ecrit. PKCanvasView
             // n'existe pas sur macOS, mais PKDrawing sait se rendre en image.
