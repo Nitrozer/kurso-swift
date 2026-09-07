@@ -28,6 +28,8 @@ struct AppShell: View {
         switch tab {
         case .notebooks:
             LibraryView()
+        case .review:
+            ReviewSessionView()
         default:
             EmptyState(
                 title: tab.label.capitalized,
