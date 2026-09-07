@@ -32,6 +32,14 @@ struct LibraryView: View {
 
     var body: some View {
         content
+            .task {
+                #if DEBUG
+                // Sert a photographier le canevas sans passer par le doigt.
+                if ProcessInfo.processInfo.arguments.contains("-openFirstPage") {
+                    openedPage = pages.first
+                }
+                #endif
+            }
             .task(id: pageToOpen?.wrappedValue?.id) {
                 if let requested = pageToOpen?.wrappedValue {
                     openedPage = requested

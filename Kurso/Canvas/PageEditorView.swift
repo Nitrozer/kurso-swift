@@ -11,7 +11,7 @@ struct PageEditorView: View {
     var onClose: () -> Void = {}
     @Environment(\.modelContext) private var context
 
-    @State private var drawing = PKDrawing()
+    @State private var drawing: PKDrawing
     @State private var clock = WritingClock()
     /// Affiche le temps d'ecriture reel, pas le temps d'ecran.
     @State private var displayedSeconds = 0
@@ -25,6 +25,22 @@ struct PageEditorView: View {
     #endif
     @Query private var assets: [PDFAsset]
     @Query(sort: \Course.name) private var courses: [Course]
+
+    /// Le trace est lu ICI, avant que la vue existe.
+    ///
+    /// Le charger plus tard laissait une fenetre ou le canevas etait construit
+    /// vide : PencilKit signalait ce vide comme un changement, on l'enregistrait
+    /// par-dessus la page, et le travail etait perdu a la simple ouverture.
+    init(page: Page, onClose: @escaping () -> Void = {}) {
+        _page = Bindable(page)
+        self.onClose = onClose
+        let stored = page.drawing
+        let hasStored = !(stored ?? Data()).isEmpty
+        let loaded = hasStored ? try? PKDrawing(data: stored!) : PKDrawing()
+        _drawing = State(initialValue: loaded ?? PKDrawing())
+        // On n'ecrase pas ce qu'on n'a pas su relire.
+        _loadFailed = State(initialValue: hasStored && loaded == nil)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -204,17 +220,11 @@ struct PageEditorView: View {
         }
     }
 
+    /// Le trace est deja charge par l'initialiseur ; il ne reste que le
+    /// compteur d'ecriture, qui n'a aucune incidence sur les donnees.
     private func load() {
         clock = WritingClock(accumulatedSeconds: page.writingSeconds)
         displayedSeconds = page.writingSeconds
-        guard let data = page.drawing, !data.isEmpty else { return }
-        do {
-            drawing = try PKDrawing(data: data)
-        } catch {
-            // On n'ecrase pas : sans ce garde-fou, enregistrer par-dessus
-            // remplacerait un dessin existant par une page vide.
-            loadFailed = true
-        }
     }
 
     private func persist(_ latest: PKDrawing? = nil) {

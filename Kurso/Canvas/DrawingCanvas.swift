@@ -54,7 +54,6 @@ struct DrawingCanvas: UIViewRepresentable {
 
     func makeUIView(context: Context) -> PKCanvasView {
         let canvas = PKCanvasView()
-        canvas.delegate = context.coordinator
         canvas.drawing = drawing
 
         // `.default` plutot que `.pencilOnly` en dur : PencilKit choisit seul —
@@ -85,6 +84,9 @@ struct DrawingCanvas: UIViewRepresentable {
 
         context.coordinator.attachToolPicker(to: canvas)
         handle?.canvas = canvas
+        // En dernier : brancher le delegue avant d'avoir pose le trace initial
+        // faisait passer ce trace pour une modification de l'utilisateur.
+        canvas.delegate = context.coordinator
         return canvas
     }
 
@@ -141,6 +143,10 @@ struct DrawingCanvas: UIViewRepresentable {
         /// n'etaient jamais enregistres.
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
             guard !isWriting else { return }
+            // PencilKit signale aussi nos propres affectations. Si le canevas
+            // dit deja la meme chose que le modele, il n'y a rien de nouveau —
+            // et surtout rien a ecrire par-dessus la page.
+            guard canvasView.drawing != parent.drawing else { return }
             commit(canvasView)
         }
 
