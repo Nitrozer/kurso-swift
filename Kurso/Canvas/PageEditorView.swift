@@ -89,7 +89,12 @@ struct PageEditorView: View {
 
     private var header: some View {
         HStack(spacing: 14) {
-            Button(action: onClose) {
+            Button {
+                // Enregistrer AVANT de fermer : onDisappear arrive trop tard,
+                // la vue est deja demontee et son canevas avec.
+                persist()
+                onClose()
+            } label: {
                 ChevronGlyph()
                     .stroke(K.ink, style: StrokeStyle(lineWidth: 2.6, lineCap: .round, lineJoin: .round))
                     .frame(width: 13, height: 13)
@@ -214,7 +219,13 @@ struct PageEditorView: View {
 
     private func persist(_ latest: PKDrawing? = nil) {
         guard !loadFailed else { return }
+        // Ordre de confiance : le trace passe en argument, sinon celui du
+        // canevas vivant, et l'etat SwiftUI seulement en dernier recours.
+        #if os(iOS)
+        let toSave = latest ?? canvasHandle.currentDrawing ?? drawing
+        #else
         let toSave = latest ?? drawing
+        #endif
         let before = page.writingSeconds
         page.writingSeconds = clock.seconds(now: .now)
         // Une page compte pour la quete des qu'elle passe dix minutes d'ecriture

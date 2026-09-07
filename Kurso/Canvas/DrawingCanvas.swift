@@ -13,6 +13,12 @@ import PencilKit
 @Observable final class CanvasHandle {
     weak var canvas: PKCanvasView?
 
+    /// Le trace tel qu'il est A CET INSTANT.
+    ///
+    /// Enregistrer depuis l'etat SwiftUI perdait le dernier trait : l'etat est
+    /// propage de facon asynchrone, et quitter la page n'attend pas.
+    var currentDrawing: PKDrawing? { canvas?.drawing }
+
     /// Convertit un rectangle de la vue vers l'espace du dessin.
     func toDrawing(_ rect: CGRect) -> CGRect {
         guard let canvas else { return rect }
@@ -111,6 +117,13 @@ struct DrawingCanvas: UIViewRepresentable {
             picker.addObserver(canvas)
             canvas.becomeFirstResponder()
             toolPicker = picker
+        }
+
+        /// Le papier n'est pas la vue que PKCanvasView met a l'echelle : il faut
+        /// le redimensionner nous-memes a chaque zoom, sinon les lignes restent
+        /// a leur taille d'origine pendant que l'ecriture grandit.
+        func scrollViewDidZoom(_ scrollView: UIScrollView) {
+            paper?.frame = CGRect(origin: .zero, size: scrollView.contentSize)
         }
 
         func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) {
