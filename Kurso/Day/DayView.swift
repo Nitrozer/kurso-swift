@@ -12,6 +12,7 @@ struct DayView: View {
     @Query private var slots: [TimeSlot]
     @Query private var cards: [Card]
     @Query private var assignments: [Assignment]
+    @Query private var activities: [DailyActivity]
     @Query(sort: \Page.createdAt, order: .reverse) private var pages: [Page]
 
     @State private var player: PlayerState?
@@ -25,14 +26,34 @@ struct DayView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
-                if let slot = currentSlot { currentCourse(slot) }
+
+                // Le cours et la serie cote a cote : c'est la disposition du
+                // prototype, et elle tient parce que les deux se lisent d'un
+                // coup d'oeil en arrivant.
+                HStack(alignment: .top, spacing: 18) {
+                    if let slot = currentSlot {
+                        currentCourse(slot).frame(maxWidth: .infinity)
+                    }
+                    StreakCard(
+                        streak: player?.streak ?? 0,
+                        freezes: player?.freezesRemaining ?? 0,
+                        gommes: player?.gommesRemaining ?? GameValues.maxGommes,
+                        week: weekMarks
+                    )
+                    .frame(maxWidth: currentSlot == nil ? .infinity : 320)
+                }
+
                 gribouCard
-                questsCard
-                upcoming
+
+                HStack(alignment: .top, spacing: 18) {
+                    questsCard
+                    upcoming.frame(maxWidth: 330)
+                }
+
                 reviewCTA
             }
             .padding(28)
-            .frame(maxWidth: 900, alignment: .leading)
+            .frame(maxWidth: 1_020, alignment: .leading)
         }
         .scrollIndicators(.hidden)
         .frame(maxWidth: .infinity)
@@ -338,6 +359,27 @@ struct DayView: View {
     }
 
     private var dueCards: [Card] { cards.filter { $0.dueAt <= now } }
+
+    /// Les sept jours de la semaine en cours, du lundi au dimanche.
+    private var weekMarks: [StreakCard.DayMark] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: now)
+        guard let monday = calendar.dateInterval(of: .weekOfYear, for: today)?.start else { return [] }
+        let labels = ["L", "M", "M", "J", "V", "S", "D"]
+
+        return (0..<7).map { offset in
+            let day = calendar.date(byAdding: .day, value: offset, to: monday) ?? monday
+            let activity = activities.first { calendar.isDate($0.day, inSameDayAs: day) }
+            // Une journee compte des qu'une session y a ete terminee (§9).
+            let done = (activity?.cardsReviewed ?? 0) > 0
+            return StreakCard.DayMark(
+                label: labels[offset],
+                done: done,
+                isToday: calendar.isDate(day, inSameDayAs: today),
+                isFuture: day > today
+            )
+        }
+    }
 
     private func load() {
         player = try? context.fetch(FetchDescriptor<PlayerState>()).first
