@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import KursoCore
 import KursoModels
+import PencilKit
 
 /// L'ecran de session — l'onglet REVISER.
 struct ReviewSessionView: View {
@@ -23,8 +24,8 @@ struct ReviewSessionView: View {
                 }
             } else if dueCards.isEmpty {
                 EmptyState(
-                    title: "Rien a reviser",
-                    message: "Les cartes reviennent quand elles sont dues. Masque une zone de diapo pour en creer."
+                    title: "Rien à réviser",
+                    message: "Les cartes reviennent quand elles sont dues. Masque une zone de diapo pour en créer."
                 )
             } else {
                 start
@@ -32,7 +33,16 @@ struct ReviewSessionView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(K.paper)
-        .task { loadPlayer() }
+        .task {
+            loadPlayer()
+            #if DEBUG
+            // Permet d'inspecter l'ecran de carte sans pouvoir taper.
+            if ProcessInfo.processInfo.arguments.contains("-autoStartReview"), session == nil {
+                begin()
+                isRevealed = true
+            }
+            #endif
+        }
     }
 
     // MARK: Ecran de depart
@@ -61,15 +71,7 @@ struct ReviewSessionView: View {
                     .foregroundStyle(K.ink)
                     .multilineTextAlignment(.center)
 
-                if isRevealed {
-                    Text(current?.answerText ?? "—")
-                        .font(KFont.body(18, weight: .bold))
-                        .foregroundStyle(K.inkBody)
-                        .multilineTextAlignment(.center)
-                        .padding(20)
-                        .frame(maxWidth: .infinity)
-                        .sticker(fill: K.paperAlt, radius: 18, state: .done)
-                }
+                if isRevealed { verso }
             }
             .padding(28)
             .frame(maxWidth: 620)
@@ -77,6 +79,44 @@ struct ReviewSessionView: View {
 
             answers
         }
+    }
+
+    /// Le verso. Une carte capturee au geste porte le trace manuscrit, pas du
+    /// texte : l'afficher comme du texte ne montrait qu'un tiret.
+    @ViewBuilder private var verso: some View {
+        if let image = versoImage {
+            image
+                .resizable()
+                .scaledToFit()
+                .frame(maxHeight: 220)
+                .padding(20)
+                .frame(maxWidth: .infinity)
+                .sticker(fill: K.paperAlt, radius: 18, state: .done)
+        } else if let text = current?.answerText, !text.isEmpty {
+            Text(text)
+                .font(KFont.body(18, weight: .bold))
+                .foregroundStyle(K.inkBody)
+                .multilineTextAlignment(.center)
+                .padding(20)
+                .frame(maxWidth: .infinity)
+                .sticker(fill: K.paperAlt, radius: 18, state: .done)
+        } else {
+            Text("Cette carte n'a pas de verso enregistré.")
+                .font(KFont.body(13, weight: .bold))
+                .foregroundStyle(K.inkSoft)
+        }
+    }
+
+    private var versoImage: Image? {
+        guard let data = current?.answerDrawing,
+              let drawing = try? PKDrawing(data: data),
+              !drawing.bounds.isEmpty else { return nil }
+        let rendered = drawing.image(from: drawing.bounds, scale: 3)
+        #if canImport(UIKit)
+        return Image(uiImage: rendered)
+        #else
+        return Image(nsImage: rendered)
+        #endif
     }
 
     private func topBar(_ session: ReviewSession) -> some View {
@@ -102,16 +142,16 @@ struct ReviewSessionView: View {
     @ViewBuilder private var answers: some View {
         if isRevealed {
             HStack(spacing: 12) {
-                Button("Je sechais") { answer(.failed) }
+                Button("Je séchais") { answer(.failed) }
                     .buttonStyle(StickerButtonStyle(kind: .secondary))
-                Button("A peu pres") { answer(.almost) }
+                Button("A peu près") { answer(.almost) }
                     .buttonStyle(StickerButtonStyle(kind: .brand))
                 Button("Je savais") { answer(.knew) }
                     .buttonStyle(StickerButtonStyle(kind: .confirm))
             }
             .padding(24)
         } else {
-            Button("Verifier") { isRevealed = true }
+            Button("Vérifier") { isRevealed = true }
                 .buttonStyle(StickerButtonStyle(kind: .primary))
                 .padding(24)
                 .frame(maxWidth: 420)
@@ -122,10 +162,10 @@ struct ReviewSessionView: View {
 
     private func summary(_ session: ReviewSession, ranOut: Bool) -> some View {
         VStack(spacing: 16) {
-            DisplayText(ranOut ? "Plus de gommes" : "Session terminee", size: 30)
+            DisplayText(ranOut ? "Plus de gommes" : "Session terminée", size: 30)
             Text(ranOut
-                 ? "Les \(session.unseenCount) cartes non vues ne sont pas penalisees. Elles reviendront comme prevu."
-                 : "\(session.xpEarned) XP gagnes\(session.isPerfect ? " · sans une faute" : "")")
+                 ? "Les \(session.unseenCount) cartes non vues ne sont pas pénalisées. Elles reviendront comme prévu."
+                 : "\(session.xpEarned) XP gagnés\(session.isPerfect ? " · sans une faute" : "")")
                 .font(KFont.body(14, weight: .bold))
                 .foregroundStyle(K.inkBody)
                 .multilineTextAlignment(.center)

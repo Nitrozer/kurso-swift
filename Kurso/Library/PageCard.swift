@@ -89,13 +89,28 @@ struct PageCard: View {
         #endif
     }
 
-    /// Sans carte, une page est un brouillon : elle ne palit pas. On ne
-    /// reproche pas de ne pas avoir fini.
-    private var isDraft: Bool { (page.cards ?? []).isEmpty }
+    /// L'etat reel de la page, calcule depuis ses cartes (§3). Il etait ecrit
+    /// en dur : la page affichait « acquise » meme avec des cartes en retard.
+    private var freshness: Freshness.State {
+        Freshness.state(cards: (page.cards ?? []).map {
+            Freshness.CardState(dueAt: $0.dueAt, interval: $0.interval)
+        })
+    }
 
-    private var freshnessColor: Color { isDraft ? K.pendingLine : K.success }
-    private var freshnessTextColor: Color { isDraft ? K.inkSoft : K.success }
-    private var freshnessLabel: String { isDraft ? "brouillon" : "acquise" }
+    private var freshnessLabel: String { freshness.rawValue }
+
+    private var freshnessColor: Color {
+        switch freshness {
+        case .acquired:   K.success
+        case .toReview:   K.fadedInk
+        case .endangered: K.endangered
+        case .draft:      K.pendingLine
+        }
+    }
+
+    private var freshnessTextColor: Color {
+        freshness == .draft ? K.inkSoft : freshnessColor
+    }
 }
 
 /// Le papier pointille des apercus.

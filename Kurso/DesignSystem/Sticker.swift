@@ -84,13 +84,27 @@ struct StickerButtonStyle: ButtonStyle {
     var radius: CGFloat = 16
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
+        let label = configuration.label
             .font(KFont.display(17))
             .foregroundStyle(foreground)
             .padding(.vertical, 13)
             .padding(.horizontal, 18)
             .frame(maxWidth: .infinity)
-            .sticker(fill: fill, radius: radius, state: configuration.isPressed ? .pressed : .rest)
+
+        // L'action secondaire est un contour nu SANS ombre — c'est ce que
+        // montre la direction artistique. Lui en donner une la rendait noire :
+        // le fond transparent laissait voir le bloc d'ombre au travers.
+        if kind == .secondary {
+            label
+                .overlay(
+                    RoundedRectangle(cornerRadius: radius, style: .continuous)
+                        .strokeBorder(K.ink, lineWidth: 3)
+                )
+                .offset(y: configuration.isPressed ? 2 : 0)
+                .animation(.spring(duration: DesignTokens.Motion.pressSeconds), value: configuration.isPressed)
+        } else {
+            label.sticker(fill: fill, radius: radius, state: configuration.isPressed ? .pressed : .rest)
+        }
     }
 
     private var fill: Color {

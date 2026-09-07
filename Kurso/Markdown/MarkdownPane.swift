@@ -50,7 +50,7 @@ struct MarkdownPane: View {
             MetaText("\(lineCount) LIGNES")
             Spacer()
             if page.titleWasEdited {
-                MetaText("TITRE FIGE")
+                MetaText("TITRE FIGÉ")
             }
         }
         .padding(.horizontal, 12)

@@ -23,7 +23,7 @@ struct CapturePrompt: View {
 
             preview
 
-            TextField("Ex. : complexite de l'insertion dans un tas", text: $question)
+            TextField("Ex. : complexité de l'insertion dans un tas", text: $question)
                 .textFieldStyle(.plain)
                 .font(KFont.body(14, weight: .bold))
                 .foregroundStyle(K.ink)
@@ -33,7 +33,7 @@ struct CapturePrompt: View {
             HStack(spacing: 12) {
                 Button("Annuler") { onDone() }
                     .buttonStyle(StickerButtonStyle(kind: .secondary))
-                Button("Creer la carte") { create() }
+                Button("Créer la carte") { create() }
                     .buttonStyle(StickerButtonStyle(kind: .primary))
                     .disabled(question.trimmingCharacters(in: .whitespaces).isEmpty)
             }

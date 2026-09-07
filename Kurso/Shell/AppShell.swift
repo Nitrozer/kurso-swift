@@ -6,7 +6,16 @@ import SwiftUI
 /// et refusent d'etre stylees — elles laissaient la typographie et les pastilles
 /// d'iPadOS visibles au milieu de la direction artistique.
 struct AppShell: View {
-    @State private var tab: RailTab = .notebooks
+    @State private var tab: RailTab = {
+        #if DEBUG
+        if let index = ProcessInfo.processInfo.arguments.firstIndex(of: "-startTab"),
+           index + 1 < ProcessInfo.processInfo.arguments.count,
+           let requested = RailTab(rawValue: ProcessInfo.processInfo.arguments[index + 1]) {
+            return requested
+        }
+        #endif
+        return .notebooks
+    }()
 
     var body: some View {
         HStack(spacing: 0) {

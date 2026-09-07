@@ -33,7 +33,7 @@ struct OcclusionLayer: View {
                     Spacer()
                     Text(existingRects.isEmpty
                          ? "Trace un rectangle sur ce que tu veux cacher"
-                         : "\(existingRects.count) zone(s) masquee(s)")
+                         : "\(existingRects.count) zone(s) masquée(s)")
                         .font(KFont.body(12.5, weight: .extraBold))
                         .foregroundStyle(K.paperAlt)
                         .padding(.horizontal, 14).padding(.vertical, 9)

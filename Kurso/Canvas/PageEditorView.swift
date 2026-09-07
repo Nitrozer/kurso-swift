@@ -20,7 +20,9 @@ struct PageEditorView: View {
     @State private var isMasking = false
     @State private var isCapturing = false
     @State private var pendingCapture: PKDrawing?
+    #if os(iOS)
     @State private var canvasHandle = CanvasHandle()
+    #endif
     @Query private var assets: [PDFAsset]
 
     var body: some View {
@@ -123,7 +125,7 @@ struct PageEditorView: View {
                 .buttonStyle(.plain)
             } else if page.pdfAssetID != nil {
                 Button { isMasking.toggle() } label: {
-                    Text(isMasking ? "Terminer" : "Masquer pour reviser")
+                    Text(isMasking ? "Terminer" : "Masquer pour réviser")
                         .font(KFont.body(12, weight: .extraBold))
                         .foregroundStyle(isMasking ? K.paperAlt : K.ink)
                         .padding(.horizontal, 13).padding(.vertical, 7)

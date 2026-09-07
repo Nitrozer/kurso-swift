@@ -4,7 +4,7 @@ import KursoCore
 import KursoModels
 
 /// Import de l'emploi du temps, en deux temps : coller le lien, puis valider
-/// les matieres detectees (§6, ecran 03).
+/// les matières détectées (§6, ecran 03).
 ///
 /// Rien n'est cree avant la validation : le regroupement est une proposition,
 /// jamais une decision prise a la place de l'etudiant.
@@ -29,8 +29,8 @@ struct TimetableOnboardingView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
-            MetaText(proposals.isEmpty ? "Etape 1 sur 2" : "Etape 2 sur 2")
-            DisplayText(proposals.isEmpty ? "Ton emploi du temps" : "\(proposals.count) matieres detectees", size: 30)
+            MetaText(proposals.isEmpty ? "Étape 1 sur 2" : "Étape 2 sur 2")
+            DisplayText(proposals.isEmpty ? "Ton emploi du temps" : "\(proposals.count) matières détectées", size: 30)
         }
         .padding(.horizontal, 28)
         .padding(.top, 26)
@@ -100,7 +100,7 @@ struct TimetableOnboardingView: View {
             HStack(spacing: 12) {
                 Button("Retour") { proposals = []; events = [] }
                     .buttonStyle(StickerButtonStyle(kind: .secondary))
-                Button("Creer \(acceptedCount) matieres") { commit() }
+                Button("Créer \(acceptedCount) matières") { commit() }
                     .buttonStyle(StickerButtonStyle(kind: .primary))
                     .disabled(acceptedCount == 0)
             }
@@ -119,7 +119,7 @@ struct TimetableOnboardingView: View {
             .buttonStyle(.plain)
 
             VStack(alignment: .leading, spacing: 3) {
-                TextField("Nom de la matiere", text: proposal.name)
+                TextField("Nom de la matière", text: proposal.name)
                     .textFieldStyle(.plain)
                     .font(KFont.body(14, weight: .extraBold))
                     .foregroundStyle(K.ink)
@@ -133,7 +133,7 @@ struct TimetableOnboardingView: View {
     }
 
     private func subtitle(for proposal: TimetableImporter.Proposal) -> String {
-        let slots = "\(proposal.group.occurrences) creneaux"
+        let slots = "\(proposal.group.occurrences) créneaux"
         guard let teacher = proposal.group.teacher else { return slots }
         return "\(slots) · \(teacher)"
     }

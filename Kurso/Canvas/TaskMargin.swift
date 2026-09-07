@@ -19,7 +19,7 @@ struct TaskMargin: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 10) {
                         if !proposals.isEmpty {
-                            MetaText("Reperé dans tes notes")
+                            MetaText("Repéré dans tes notes")
                             ForEach(proposals, id: \.title) { proposal in
                                 card(proposal)
                             }

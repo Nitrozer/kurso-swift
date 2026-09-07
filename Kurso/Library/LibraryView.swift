@@ -72,7 +72,7 @@ struct LibraryView: View {
                     Text("Importe ton emploi du temps")
                         .font(KFont.body(13.5, weight: .extraBold))
                         .foregroundStyle(K.ink)
-                    Text("Tes pages se rangeront seules dans la bonne matiere.")
+                    Text("Tes pages se rangeront seules dans la bonne matière.")
                         .font(KFont.body(12, weight: .bold))
                         .foregroundStyle(K.inkBody)
                 }
@@ -99,6 +99,8 @@ struct LibraryView: View {
             }
             Spacer(minLength: 0)
             searchField
+            importButton
+            pdfButton
             newPageButton
         }
         .padding(.horizontal, 28)
@@ -110,8 +112,9 @@ struct LibraryView: View {
     }
 
     private var headerMeta: String {
-        let name = selectedCourse?.name ?? "Toutes les matieres"
-        return "\(name) · \(visiblePages.count) pages"
+        let name = selectedCourse?.name ?? "Toutes les matières"
+        let count = visiblePages.count
+        return "\(name) · \(count) page\(count > 1 ? "s" : "")"
     }
 
     /// « Chercher dans l'ecriture » : la requete porte sur le texte reconnu,
@@ -119,7 +122,7 @@ struct LibraryView: View {
     private var searchField: some View {
         HStack(spacing: 8) {
             Glyph(kind: .search, size: 14, color: K.inkSoft)
-            TextField("Chercher dans l'ecriture", text: $query)
+            TextField("Chercher dans l'écriture", text: $query)
                 .textFieldStyle(.plain)
                 .font(KFont.body(12, weight: .bold))
                 .foregroundStyle(K.ink)
@@ -178,8 +181,7 @@ struct LibraryView: View {
                             selection = .course(course.id)
                         }
                     }
-                    importButton
-                    pdfButton
+
                 }
                 .padding(.horizontal, 28)
                 .padding(.vertical, 14)
@@ -206,7 +208,7 @@ struct LibraryView: View {
         Button { isPickingPDF = true } label: {
             HStack(spacing: 7) {
                 Glyph(kind: .plus, size: 12)
-                Text("Deposer un PDF")
+                Text("Déposer un PDF")
                     .font(KFont.body(12, weight: .extraBold))
                     .foregroundStyle(K.ink)
             }
@@ -239,7 +241,7 @@ struct LibraryView: View {
         if !query.isEmpty {
             searchResults
         } else if visiblePages.isEmpty {
-            EmptyState(title: "Aucune page", message: "Creez la premiere page de ce cahier.")
+            EmptyState(title: "Aucune page", message: "Créez la première page de ce cahier.")
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 22) {
@@ -268,8 +270,8 @@ struct LibraryView: View {
         let hits = TextSearch.rank(visiblePages, query: query) { $0.recognizedText }
         if hits.isEmpty {
             EmptyState(
-                title: "Rien trouve",
-                message: "Aucune page ne contient « \(query) ». La recherche porte sur l'ecriture reconnue."
+                title: "Rien trouvé",
+                message: "Aucune page ne contient « \(query) ». La recherche porte sur l'écriture reconnue."
             )
         } else {
             ScrollView {
