@@ -26,7 +26,7 @@ enum RailTab: String, CaseIterable, Hashable {
     }
     /// Seuls les cahiers existent a l'etape 1. Les autres sont annonces plutot
     /// que caches : le rail dit ou va l'application.
-    var isAvailable: Bool { self == .notebooks || self == .review }
+    var isAvailable: Bool { self == .notebooks || self == .review || self == .memory }
 }
 
 /// Rail de navigation — 104 px, graphite, du haut au bas de l'ecran.

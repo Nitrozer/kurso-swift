@@ -39,6 +39,8 @@ struct AppShell: View {
             LibraryView()
         case .review:
             ReviewSessionView()
+        case .memory:
+            MemoryMapView()
         default:
             EmptyState(
                 title: tab.label.capitalized,
