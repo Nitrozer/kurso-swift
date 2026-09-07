@@ -28,12 +28,23 @@ import PencilKit
 }
 
 struct DrawingCanvas: UIViewRepresentable {
+    /// Format d'une page, en points. Proche d'un A4 a l'echelle de l'ecran.
+    static let pageWidth: CGFloat = 1_240
+    static let pageHeight: CGFloat = 3_000
+
     @Binding var drawing: PKDrawing
     var handle: CanvasHandle?
+    /// Modele de page affiche sous l'ecriture.
+    var template: PaperView.Template = .ruled
     /// Le stylet touche la surface.
     var onBeginWriting: () -> Void
     /// Le stylet quitte la surface : c'est aussi le moment ou l'on enregistre.
-    var onEndWriting: () -> Void
+    ///
+    /// Le trace est passe en argument, jamais relu depuis l'etat : SwiftUI
+    /// propage un @Binding de facon asynchrone, donc enregistrer juste apres
+    /// l'avoir ecrit sauvegardait souvent la version precedente. C'est ce qui
+    /// faisait disparaitre des traits une fois sur deux.
+    var onEndWriting: (PKDrawing) -> Void
 
     func makeUIView(context: Context) -> PKCanvasView {
         let canvas = PKCanvasView()
@@ -51,12 +62,32 @@ struct DrawingCanvas: UIViewRepresentable {
         canvas.backgroundColor = .clear
         canvas.isOpaque = false
 
+        // PKCanvasView est un UIScrollView : le pincement zoome, comme dans
+        // n'importe quelle app de prise de notes.
+        canvas.minimumZoomScale = 1
+        canvas.maximumZoomScale = 5
+        canvas.bouncesZoom = true
+        // Une page haute, pour pouvoir ecrire au-dela de l'ecran.
+        canvas.contentSize = CGSize(width: DrawingCanvas.pageWidth, height: DrawingCanvas.pageHeight)
+
+        // Le papier vit dans le contenu du canevas, sous les traits : il defile
+        // et zoome avec l'ecriture.
+        let paper = PaperView(frame: CGRect(origin: .zero, size: canvas.contentSize))
+        paper.template = template
+        canvas.insertSubview(paper, at: 0)
+        context.coordinator.paper = paper
+
         context.coordinator.attachToolPicker(to: canvas)
         handle?.canvas = canvas
         return canvas
     }
 
     func updateUIView(_ canvas: PKCanvasView, context: Context) {
+        context.coordinator.paper?.template = template
+        // Le papier suit la taille du contenu, pas celle de la vue : zoomer
+        // agrandit la page, il ne doit pas rester au format d'origine.
+        context.coordinator.paper?.frame = CGRect(origin: .zero, size: canvas.contentSize)
+
         // Ne reinjecter que si le modele a change ailleurs : reaffecter le dessin
         // pendant que l'utilisateur ecrit interromprait son trait.
         if canvas.drawing != drawing && !context.coordinator.isWriting {
@@ -69,6 +100,7 @@ struct DrawingCanvas: UIViewRepresentable {
     final class Coordinator: NSObject, PKCanvasViewDelegate {
         private let parent: DrawingCanvas
         private var toolPicker: PKToolPicker?
+        var paper: PaperView?
         private(set) var isWriting = false
 
         init(_ parent: DrawingCanvas) { self.parent = parent }
@@ -88,10 +120,21 @@ struct DrawingCanvas: UIViewRepresentable {
 
         func canvasViewDidEndUsingTool(_ canvasView: PKCanvasView) {
             isWriting = false
-            // Le dessin est remonte ici plutot qu'a chaque micro-changement :
-            // une fois le trait termine, l'etat est stable.
-            parent.drawing = canvasView.drawing
-            parent.onEndWriting()
+            commit(canvasView)
+        }
+
+        /// Filet de securite : certains changements n'emettent pas de fin
+        /// d'outil — une gomme, un collage, une annulation. Sans ce rappel, ils
+        /// n'etaient jamais enregistres.
+        func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
+            guard !isWriting else { return }
+            commit(canvasView)
+        }
+
+        private func commit(_ canvasView: PKCanvasView) {
+            let snapshot = canvasView.drawing
+            parent.drawing = snapshot
+            parent.onEndWriting(snapshot)
         }
     }
 }

@@ -24,6 +24,7 @@ struct PageEditorView: View {
     @State private var canvasHandle = CanvasHandle()
     #endif
     @Query private var assets: [PDFAsset]
+    @Query(sort: \Course.name) private var courses: [Course]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -39,9 +40,10 @@ struct PageEditorView: View {
                 DrawingCanvas(
                 drawing: $drawing,
                 onBeginWriting: { clock.begin(at: .now) },
-                onEndWriting: {
+                onEndWriting: { latest in
                     clock.end(at: .now)
-                    persist()
+                    drawing = latest
+                    persist(latest)
                 }
             )
                 if isMasking, let index = page.pdfPageIndex {
@@ -102,6 +104,7 @@ struct PageEditorView: View {
                 DisplayText(page.title.isEmpty ? "Page sans titre" : page.title, size: 19)
                 MetaText(page.createdAt.formatted(.dateTime.weekday(.wide).day().month(.wide)))
             }
+            coursePicker
             Spacer()
             if loadFailed {
                 // Un dessin illisible ne doit jamais etre ecrase en silence (§8).
@@ -150,6 +153,52 @@ struct PageEditorView: View {
         return assets.first { $0.id == id }
     }
 
+    /// Le rattachement automatique ne joue que pendant un creneau. Hors cours,
+    /// il faut pouvoir ranger sa page soi-meme — sinon une note ecrite le
+    /// dimanche reste orpheline pour toujours.
+    @ViewBuilder private var coursePicker: some View {
+        if !courses.isEmpty {
+            Menu {
+                ForEach(courses) { course in
+                    Button(course.name) {
+                        page.course = course
+                        try? context.save()
+                    }
+                }
+                if page.course != nil {
+                    Divider()
+                    Button("Retirer la matière", role: .destructive) {
+                        page.course = nil
+                        try? context.save()
+                    }
+                }
+            } label: {
+                HStack(spacing: 7) {
+                    if let course = page.course {
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(K.brand)
+                            .frame(width: 9, height: 9)
+                        Text(course.name)
+                            .font(KFont.body(12.5, weight: .extraBold))
+                            .foregroundStyle(K.ink)
+                    } else {
+                        Text("Choisir une matière")
+                            .font(KFont.body(12.5, weight: .bold))
+                            .foregroundStyle(K.inkSoft)
+                    }
+                    ChevronGlyph()
+                        .stroke(K.inkSoft, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                        .frame(width: 8, height: 8)
+                        .rotationEffect(.degrees(-90))
+                }
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+        }
+    }
+
     private func load() {
         clock = WritingClock(accumulatedSeconds: page.writingSeconds)
         displayedSeconds = page.writingSeconds
@@ -163,8 +212,9 @@ struct PageEditorView: View {
         }
     }
 
-    private func persist() {
+    private func persist(_ latest: PKDrawing? = nil) {
         guard !loadFailed else { return }
+        let toSave = latest ?? drawing
         let before = page.writingSeconds
         page.writingSeconds = clock.seconds(now: .now)
         // Une page compte pour la quete des qu'elle passe dix minutes d'ecriture
@@ -173,17 +223,16 @@ struct PageEditorView: View {
             DailyActivityStore.record(.writePage, context: context)
         }
         displayedSeconds = page.writingSeconds
-        page.drawing = drawing.dataRepresentation()
+        page.drawing = toSave.dataRepresentation()
         try? context.save()
-        scheduleRecognition()
+        scheduleRecognition(toSave)
     }
 
     /// La reconnaissance tourne apres l'enregistrement, jamais pendant l'ecriture :
     /// Vision sur une page entiere prend le temps qu'il faut, et rien ne doit
     /// disputer le fil principal au stylet.
-    private func scheduleRecognition() {
+    private func scheduleRecognition(_ snapshot: PKDrawing) {
         recognitionTask?.cancel()
-        let snapshot = drawing
         recognitionTask = Task {
             let text = await HandwritingRecognizer.recognize(snapshot)
             guard !Task.isCancelled, !text.isEmpty else { return }
