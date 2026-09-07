@@ -10,8 +10,8 @@ enum RailTab: String, CaseIterable, Hashable {
         switch self {
         case .day:       "JOUR"
         case .notebooks: "CAHIERS"
-        case .memory:    "MEMOIRE"
-        case .review:    "REVISER"
+        case .memory:    "MÉMOIRE"
+        case .review:    "RÉVISER"
         case .cards:     "FICHES"
         }
     }

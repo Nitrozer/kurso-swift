@@ -277,10 +277,10 @@ struct DayView: View {
     /// Le grand chiffre de la carte. Un cours lointain affiche son heure de
     /// debut : « dans 940 min » ne veut rien dire.
     private func countdown(_ slot: TimeSlot, live: Bool) -> (value: String, unit: String) {
-        if live { return ("\(remainingMinutes(slot))", "min restantes") }
+        if live { return ("\(remainingMinutes(slot))", "min") }
         let minutes = Int(slot.start.timeIntervalSince(now) / 60)
-        if minutes <= 120 { return ("\(max(0, minutes))", "min avant") }
-        return (slot.start.formatted(.dateTime.hour().minute()), "au départ")
+        if minutes <= 120 { return ("\(max(0, minutes))", "min") }
+        return (slot.start.formatted(.dateTime.hour().minute()), "")
     }
 
     private func remainingMinutes(_ slot: TimeSlot) -> Int {
