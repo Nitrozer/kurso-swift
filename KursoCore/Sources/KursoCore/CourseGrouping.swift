@@ -13,29 +13,40 @@ public enum CourseGrouping {
     public static let threshold = 0.85
 
     public struct Group: Equatable, Sendable {
-        /// L'intitule le plus frequent du groupe, propose comme nom de matiere.
+        /// La matiere, extraite de l'intitule : sans decoupage, chaque
+        /// enseignant creerait sa propre matiere.
         public let name: String
         public let uids: [String]
         public let occurrences: Int
+        /// Enseignant le plus frequent du groupe, quand l'export le donne.
+        public let teacher: String?
     }
 
     public static func group(_ events: [ICSEvent]) -> [Group] {
-        var buckets: [(key: String, names: [String], uids: [String])] = []
+        var buckets: [(key: String, names: [String], uids: [String], teachers: [String])] = []
 
         for event in events {
-            let key = normalize(event.summary)
+            let parts = SummaryParser.parse(event.summary)
+            let key = normalize(parts.subject)
             guard !key.isEmpty else { continue }
 
-            if let index = buckets.firstIndex(where: { similarity($0.key, key) >= threshold }) {
-                buckets[index].names.append(event.summary)
+            let index = buckets.firstIndex { similarity($0.key, key) >= threshold }
+            if let index {
+                buckets[index].names.append(parts.subject)
                 buckets[index].uids.append(event.uid)
+                if let teacher = parts.teacher { buckets[index].teachers.append(teacher) }
             } else {
-                buckets.append((key, [event.summary], [event.uid]))
+                buckets.append((key, [parts.subject], [event.uid], parts.teacher.map { [$0] } ?? []))
             }
         }
 
         return buckets.map { bucket in
-            Group(name: mostCommon(bucket.names), uids: bucket.uids, occurrences: bucket.names.count)
+            Group(
+                name: mostCommon(bucket.names),
+                uids: bucket.uids,
+                occurrences: bucket.names.count,
+                teacher: bucket.teachers.isEmpty ? nil : mostCommon(bucket.teachers)
+            )
         }
         .sorted { $0.occurrences > $1.occurrences }
     }

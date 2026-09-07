@@ -123,13 +123,19 @@ struct TimetableOnboardingView: View {
                     .textFieldStyle(.plain)
                     .font(KFont.body(14, weight: .extraBold))
                     .foregroundStyle(K.ink)
-                MetaText("\(proposal.wrappedValue.group.occurrences) creneaux")
+                MetaText(subtitle(for: proposal.wrappedValue))
             }
             Spacer(minLength: 0)
         }
         .padding(14)
         .sticker(fill: K.paperAlt, radius: 14,
                  state: proposal.wrappedValue.isAccepted ? .rest : .upcoming)
+    }
+
+    private func subtitle(for proposal: TimetableImporter.Proposal) -> String {
+        let slots = "\(proposal.group.occurrences) creneaux"
+        guard let teacher = proposal.group.teacher else { return slots }
+        return "\(slots) · \(teacher)"
     }
 
     private var acceptedCount: Int { proposals.filter(\.isAccepted).count }

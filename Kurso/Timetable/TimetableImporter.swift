@@ -79,6 +79,7 @@ enum TimetableImporter {
         for proposal in accepted {
             let course = Course(name: proposal.name.trimmingCharacters(in: .whitespaces))
             course.icsUID = proposal.group.uids.first
+            course.teacher = proposal.group.teacher
             context.insert(course)
             for uid in proposal.group.uids { courseByUID[uid] = course }
         }
