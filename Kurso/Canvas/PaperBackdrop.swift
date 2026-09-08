@@ -13,12 +13,23 @@ struct PaperBackdrop: View {
     struct Viewport: Equatable {
         var zoom: CGFloat = 1
         var offset: CGPoint = .zero
+        var size: CGSize = .zero
+    }
+
+    /// Un morceau de diapo rendu a la resolution de l'ecran.
+    /// `crop` est normalise dans l'image de base, origine en haut a gauche.
+    struct Tile {
+        var image: CGImage
+        var crop: CGRect
     }
 
     var viewport: Viewport
     var template: PaperTemplate
     var pageSize: CGSize
     var pdfImage: CGImage?
+    /// La zone visible, rendue plus finement. L'image de base reste dessous :
+    /// une tuile en retard laisse voir une diapo floue, jamais un trou.
+    var pdfTile: Tile?
 
     private let lineSpacing: CGFloat = 32
     private let marginX: CGFloat = 96
@@ -42,8 +53,18 @@ struct PaperBackdrop: View {
             context.clip(to: Path(page.intersection(bounds)))
 
             if let pdfImage {
-                let fitted = fit(CGSize(width: pdfImage.width, height: pdfImage.height), into: page)
+                let fitted = Self.fitted(CGSize(width: pdfImage.width, height: pdfImage.height),
+                                         into: page)
                 context.draw(Image(decorative: pdfImage, scale: 1), in: fitted)
+                if let tile = pdfTile {
+                    let target = CGRect(
+                        x: fitted.minX + tile.crop.minX * fitted.width,
+                        y: fitted.minY + tile.crop.minY * fitted.height,
+                        width: tile.crop.width * fitted.width,
+                        height: tile.crop.height * fitted.height
+                    )
+                    context.draw(Image(decorative: tile.image, scale: 1), in: target)
+                }
                 return
             }
             guard template != .blank else { return }
@@ -99,7 +120,7 @@ struct PaperBackdrop: View {
         return out
     }
 
-    private func fit(_ size: CGSize, into rect: CGRect) -> CGRect {
+    static func fitted(_ size: CGSize, into rect: CGRect) -> CGRect {
         guard size.width > 0, size.height > 0 else { return rect }
         let scale = min(rect.width / size.width, rect.height / size.height)
         let w = size.width * scale, h = size.height * scale

@@ -179,7 +179,8 @@ struct DrawingCanvas: UIViewRepresentable {
 
         func report(_ scrollView: UIScrollView) {
             let next = PaperBackdrop.Viewport(zoom: scrollView.zoomScale,
-                                              offset: scrollView.contentOffset)
+                                              offset: scrollView.contentOffset,
+                                              size: scrollView.bounds.size)
             guard next != lastReported else { return }
             lastReported = next
             parent.onViewportChange(next)

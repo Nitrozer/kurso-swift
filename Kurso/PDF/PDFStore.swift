@@ -76,4 +76,51 @@ enum PDFStore {
 
         return context.makeImage()
     }
+
+    /// Rend UNE PORTION de page, a la resolution de l'ecran.
+    ///
+    /// Re-rendre la page entiere en zoomant est impossible : a 5x un A4
+    /// demanderait pres de 900 Mo. On ne rend donc que ce qui est visible,
+    /// ce qui garde un cout constant quel que soit le zoom.
+    ///
+    /// `crop` est normalise entre 0 et 1, origine en HAUT a gauche — comme a
+    /// l'ecran, pas comme dans le repere PDF.
+    static func render(fileName: String, pageIndex: Int,
+                       crop: CGRect, pixelWidth: Int) -> CGImage? {
+        guard pixelWidth > 0, crop.width > 0, crop.height > 0,
+              let document = document(fileName: fileName),
+              pageIndex >= 0, pageIndex < document.pageCount,
+              let page = document.page(at: pageIndex)
+        else { return nil }
+
+        let bounds = page.bounds(for: .mediaBox)
+        guard bounds.width > 0, bounds.height > 0 else { return nil }
+
+        // Du repere ecran (y vers le bas) vers le repere PDF (y vers le haut).
+        let cropPDF = CGRect(
+            x: bounds.minX + crop.minX * bounds.width,
+            y: bounds.maxY - (crop.minY + crop.height) * bounds.height,
+            width: crop.width * bounds.width,
+            height: crop.height * bounds.height
+        )
+
+        let scale = CGFloat(pixelWidth) / cropPDF.width
+        let pixelHeight = Int((cropPDF.height * scale).rounded())
+        guard pixelHeight > 0 else { return nil }
+
+        guard let context = CGContext(
+            data: nil, width: pixelWidth, height: pixelHeight,
+            bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+        ) else { return nil }
+
+        context.setFillColor(CGColor(gray: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
+        context.scaleBy(x: scale, y: scale)
+        context.translateBy(x: -cropPDF.minX, y: -cropPDF.minY)
+        page.draw(with: .mediaBox, to: context)
+
+        return context.makeImage()
+    }
 }
