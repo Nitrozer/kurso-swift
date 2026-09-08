@@ -28,10 +28,15 @@ et `Kurso Dossier.dc.html` (document complet, pour les intentions).
 | Dates dans le texte | `NSDataDetector` |
 | Emploi du temps | ICS (RFC 5545), parsé localement ; `EventKit` en source secondaire |
 | Audio | AVFoundation, `AVAudioRecorder` en AAC 32 kbps mono |
-| Aucune dépendance réseau | pas de serveur, pas d'API tierce, pas de compte applicatif |
+| Compte | identité seule (Apple, Google, e-mail), aucune donnée de cours |
 
 **Règle non négociable :** aucune donnée de cours ne sort de l'appareil autrement que par
 CloudKit dans l'iCloud de l'utilisateur. C'est un argument produit, pas une préférence.
+
+**Le compte est une exception délimitée** (écran 01 de l'onboarding). Il porte une
+identité — de quoi retrouver l'utilisateur d'un appareil à l'autre et faire vivre la
+ligue — et rien d'autre. Le contenu des cours ne transite jamais par lui : c'est ce
+que dit l'écran de connexion lui-même, et c'est ce qui doit rester vrai.
 
 ---
 
@@ -448,7 +453,9 @@ pas un oubli.
 - Pas plus de deux notifications par jour, rien le week-end sans échéance.
 - Pas de mascotte qui bouge pendant l'écriture ; trois apparitions par session au maximum.
 - Pas de pari de copeaux (mécanique retirée du projet : enjeu artificiel).
-- Pas de compte applicatif, pas de serveur, pas de télémétrie.
+- Pas de télémétrie, pas de publicité, pas de revente de données.
+- **Aucune donnée de cours sur un serveur.** Pages, cartes, audio, PDF : tout
+  vit dans l'iCloud de l'utilisateur, jamais ailleurs. Cette règle-là ne bouge pas.
 
 ---
 

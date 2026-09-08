@@ -11,7 +11,7 @@ import KursoModels
 struct OnboardingView: View {
     @Environment(\.modelContext) private var context
 
-    private enum Step: String { case welcome, name, timetable, ready }
+    private enum Step: String { case signIn, name, timetable, ready }
     @State private var step: Step = {
         #if DEBUG
         if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-onboardingStep"),
@@ -20,23 +20,26 @@ struct OnboardingView: View {
             return requested
         }
         #endif
-        return .welcome
+        // Une session deja ouverte ne se redemande pas.
+        return AuthClient.shared.isSignedIn ? .name : .signIn
     }()
     @State private var name = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if step != .timetable { header }
+            // L'ecran de connexion porte son propre titre, plein cadre.
+            if step != .timetable && step != .signIn { header }
             switch step {
-            case .welcome:   welcomeStep
+            case .signIn:    SignInView { step = .name }
             case .name:      nameStep
             case .timetable: TimetableOnboardingView(onFinish: { step = .ready })
             case .ready:     readyStep
             }
         }
-        // Une colonne de lecture : etire sur toute la largeur d'un iPad,
-        // le texte devient illisible et l'ecran parait vide.
-        .frame(maxWidth: 620, alignment: .topLeading)
+        // Une colonne de lecture : etire sur toute la largeur d'un iPad, le
+        // texte devient illisible. L'ecran de connexion, lui, est plein cadre —
+        // il a sa propre mise en page en deux panneaux.
+        .frame(maxWidth: step == .signIn ? .infinity : 620, alignment: .topLeading)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(K.paper)
     }
@@ -53,7 +56,7 @@ struct OnboardingView: View {
 
     private var number: Int {
         switch step {
-        case .welcome: 1
+        case .signIn: 1
         case .name: 2
         case .timetable: 3
         case .ready: 4
@@ -62,54 +65,11 @@ struct OnboardingView: View {
 
     private var title: String {
         switch step {
-        case .welcome:   "Bienvenue dans Kurso"
+        case .signIn:    "Kurso"
         case .name:      "Comment on t'appelle ?"
         case .timetable: "Ton emploi du temps"
         case .ready:     name.isEmpty ? "C'est prêt." : "C'est prêt, \(name)."
         }
-    }
-
-    // MARK: 01 — ce que fait Kurso
-
-    private var welcomeStep: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("Tu écris tes cours à la main. Kurso s'occupe du reste : ranger tes pages par matière, repérer les devoirs, et te faire réviser au bon moment.")
-                .font(KFont.body(15, weight: .bold))
-                .foregroundStyle(K.ink)
-                .fixedSize(horizontal: false, vertical: true)
-
-            VStack(alignment: .leading, spacing: 10) {
-                promise("Rien à créer", "Pas de compte, pas de mot de passe.")
-                promise("Rien ne part ailleurs", "Tes cours restent sur ton appareil et dans ton iCloud.")
-                promise("iPad et Mac", "Ce que tu écris d'un côté se retrouve de l'autre.")
-            }
-
-            Spacer(minLength: 0)
-
-            Button("Commencer") { step = .name }
-                .buttonStyle(StickerButtonStyle(kind: .brand))
-        }
-        .padding(.horizontal, 32)
-        .padding(.bottom, 28)
-    }
-
-    private func promise(_ title: String, _ detail: String) -> some View {
-        HStack(alignment: .top, spacing: 13) {
-            CheckBadge(kind: .quest, isChecked: true, size: 22)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(KFont.body(14, weight: .extraBold))
-                    .foregroundStyle(K.ink)
-                Text(detail)
-                    .font(KFont.body(13, weight: .bold))
-                    .foregroundStyle(K.ink.opacity(0.7))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .sticker(fill: K.paperAlt, radius: 14)
     }
 
     // MARK: 02 — le prenom
