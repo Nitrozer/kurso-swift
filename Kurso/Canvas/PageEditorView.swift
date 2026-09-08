@@ -20,6 +20,12 @@ struct PageEditorView: View {
     @State private var isMasking = false
     @State private var isCapturing = false
     @State private var pendingCapture: PKDrawing?
+    /// La diapo rasterisee, passee au fond du canevas pour qu'elle defile et
+    /// zoome avec l'ecriture — la poser derriere le canevas la laissait
+    /// immobile, et le papier la recouvrait.
+    @State private var pdfImage: CGImage?
+    /// Zoom et defilement du canevas, dont le fond se sert pour se caler.
+    @State private var viewport = PaperBackdrop.Viewport()
     #if os(iOS)
     @State private var canvasHandle = CanvasHandle()
     #endif
@@ -52,13 +58,17 @@ struct PageEditorView: View {
             #if os(iOS)
             HStack(spacing: 0) {
             ZStack {
-                if let asset = pdfAsset, let index = page.pdfPageIndex {
-                    PDFBackground(asset: asset, pageIndex: index)
-                        .padding(8)
-                }
+                PaperBackdrop(
+                    viewport: viewport,
+                    template: .ruled,
+                    pageSize: CGSize(width: DrawingCanvas.pageWidth,
+                                     height: DrawingCanvas.pageHeight),
+                    pdfImage: pdfImage
+                )
                 DrawingCanvas(
                 drawing: $drawing,
                 handle: canvasHandle,
+                onViewportChange: { viewport = $0 },
                 onBeginWriting: { clock.begin(at: .now) },
                 onEndWriting: { latest in
                     clock.end(at: .now)
@@ -101,6 +111,9 @@ struct PageEditorView: View {
         )) { draft in
             CapturePrompt(page: page, answer: draft.drawing) { pendingCapture = nil }
         }
+        #if os(iOS)
+        .task { await loadPDF() }
+        #endif
         .task {
             load()
             #if DEBUG
@@ -241,6 +254,45 @@ struct PageEditorView: View {
         clock = WritingClock(accumulatedSeconds: page.writingSeconds)
         displayedSeconds = page.writingSeconds
     }
+
+    #if os(iOS)
+    private func loadPDF() async {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-fakePDF") {
+            pdfImage = Self.debugPage()
+            return
+        }
+        #endif
+        guard let asset = pdfAsset, let index = page.pdfPageIndex else { return }
+        let fileName = asset.fileName
+        // La largeur est lue ici, sur l'acteur principal, avant de partir en
+        // tache detachee.
+        let width = DrawingCanvas.pageWidth * 2
+        let rendered = await Task.detached(priority: .userInitiated) {
+            PDFStore.render(fileName: fileName, pageIndex: index, width: width)
+        }.value
+        pdfImage = rendered
+    }
+    #endif
+
+    #if DEBUG && os(iOS)
+    /// Une fausse diapo, pour verifier que le fond PDF s'affiche.
+    private static func debugPage() -> CGImage? {
+        let size = CGSize(width: 1_240, height: 1_754)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { ctx in
+            UIColor.white.setFill()
+            ctx.fill(CGRect(origin: .zero, size: size))
+            UIColor.systemIndigo.setFill()
+            ctx.fill(CGRect(x: 80, y: 120, width: 1_080, height: 180))
+            UIColor.systemOrange.setFill()
+            ctx.fill(CGRect(x: 80, y: 400, width: 520, height: 520))
+            UIColor.darkGray.setStroke()
+            ctx.cgContext.setLineWidth(6)
+            ctx.cgContext.stroke(CGRect(x: 30, y: 30, width: size.width - 60, height: size.height - 60))
+        }.cgImage
+    }
+    #endif
 
     private func persist(_ latest: PKDrawing? = nil) {
         guard !loadFailed else { return }

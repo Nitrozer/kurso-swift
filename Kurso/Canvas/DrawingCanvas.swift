@@ -33,6 +33,20 @@ import PencilKit
     }
 }
 
+/// Un canevas qui previent quand il se dispose.
+///
+/// Le fond doit etre recale a chaque mise en page : sans ce signal, il gardait
+/// la taille qu'il avait avant le premier layout — c'est-a-dire aucune — et
+/// n'etait jamais dessine tant qu'on n'avait pas zoome ou fait defiler.
+final class PaperBackedCanvas: PKCanvasView {
+    var onLayout: (() -> Void)?
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        onLayout?()
+    }
+}
+
 struct DrawingCanvas: UIViewRepresentable {
     /// Format d'une page, en points. Proche d'un A4 a l'echelle de l'ecran.
     static let pageWidth: CGFloat = 1_240
@@ -40,8 +54,8 @@ struct DrawingCanvas: UIViewRepresentable {
 
     @Binding var drawing: PKDrawing
     var handle: CanvasHandle?
-    /// Modele de page affiche sous l'ecriture.
-    var template: PaperView.Template = .ruled
+    /// Signale l'etat du canevas : c'est le fond, derriere, qui s'y accorde.
+    var onViewportChange: (PaperBackdrop.Viewport) -> Void = { _ in }
     /// Le stylet touche la surface.
     var onBeginWriting: () -> Void
     /// Le stylet quitte la surface : c'est aussi le moment ou l'on enregistre.
@@ -52,8 +66,8 @@ struct DrawingCanvas: UIViewRepresentable {
     /// faisait disparaitre des traits une fois sur deux.
     var onEndWriting: (PKDrawing) -> Void
 
-    func makeUIView(context: Context) -> PKCanvasView {
-        let canvas = PKCanvasView()
+    func makeUIView(context: Context) -> PaperBackedCanvas {
+        let canvas = PaperBackedCanvas()
         canvas.drawing = drawing
 
         // `.default` plutot que `.pencilOnly` en dur : PencilKit choisit seul —
@@ -75,12 +89,12 @@ struct DrawingCanvas: UIViewRepresentable {
         // Une page haute, pour pouvoir ecrire au-dela de l'ecran.
         canvas.contentSize = CGSize(width: DrawingCanvas.pageWidth, height: DrawingCanvas.pageHeight)
 
-        // Le papier vit dans le contenu du canevas, sous les traits : il defile
-        // et zoome avec l'ecriture.
-        let paper = PaperView(frame: CGRect(origin: .zero, size: canvas.contentSize))
-        paper.template = template
-        canvas.insertSubview(paper, at: 0)
-        context.coordinator.paper = paper
+        // Le fond est une vue soeur, derriere : il ne peut donc pas entrer en
+        // conflit avec la mise en page du scroll view.
+        canvas.onLayout = { [weak canvas, weak coordinator = context.coordinator] in
+            guard let canvas, let coordinator else { return }
+            coordinator.report(canvas)
+        }
 
         context.coordinator.attachToolPicker(to: canvas)
         handle?.canvas = canvas
@@ -89,6 +103,17 @@ struct DrawingCanvas: UIViewRepresentable {
         canvas.delegate = context.coordinator
 
         #if DEBUG
+        if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-simulateZoom"),
+           i + 1 < ProcessInfo.processInfo.arguments.count,
+           let scale = Double(ProcessInfo.processInfo.arguments[i + 1]) {
+            let coordinator = context.coordinator
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                canvas.setZoomScale(CGFloat(scale), animated: false)
+                coordinator.report(canvas)
+                print("[KURSO] zoom=\(canvas.zoomScale) contenu=\(canvas.contentSize)")
+            }
+        }
+
         // Reproduit un trait reel : debut d'outil, trace, fin d'outil. C'est
         // exactement le chemin qu'emprunte le stylet.
         if ProcessInfo.processInfo.arguments.contains("-simulateStroke") {
@@ -107,11 +132,8 @@ struct DrawingCanvas: UIViewRepresentable {
         return canvas
     }
 
-    func updateUIView(_ canvas: PKCanvasView, context: Context) {
-        context.coordinator.paper?.template = template
-        // Le papier suit la taille du contenu, pas celle de la vue : zoomer
-        // agrandit la page, il ne doit pas rester au format d'origine.
-        context.coordinator.paper?.frame = CGRect(origin: .zero, size: canvas.contentSize)
+    func updateUIView(_ canvas: PaperBackedCanvas, context: Context) {
+        context.coordinator.report(canvas)
 
         // Ne reinjecter que si le modele a change ailleurs : reaffecter le dessin
         // pendant que l'utilisateur ecrit interromprait son trait.
@@ -138,8 +160,8 @@ struct DrawingCanvas: UIViewRepresentable {
     final class Coordinator: NSObject, PKCanvasViewDelegate {
         private let parent: DrawingCanvas
         private var toolPicker: PKToolPicker?
-        var paper: PaperView?
         private(set) var isWriting = false
+        private var lastReported: PaperBackdrop.Viewport?
 
         init(_ parent: DrawingCanvas) { self.parent = parent }
 
@@ -151,11 +173,16 @@ struct DrawingCanvas: UIViewRepresentable {
             toolPicker = picker
         }
 
-        /// Le papier n'est pas la vue que PKCanvasView met a l'echelle : il faut
-        /// le redimensionner nous-memes a chaque zoom, sinon les lignes restent
-        /// a leur taille d'origine pendant que l'ecriture grandit.
-        func scrollViewDidZoom(_ scrollView: UIScrollView) {
-            paper?.frame = CGRect(origin: .zero, size: scrollView.contentSize)
+        /// Le fond, derriere, se cale sur ces deux valeurs.
+        func scrollViewDidZoom(_ scrollView: UIScrollView) { report(scrollView) }
+        func scrollViewDidScroll(_ scrollView: UIScrollView) { report(scrollView) }
+
+        func report(_ scrollView: UIScrollView) {
+            let next = PaperBackdrop.Viewport(zoom: scrollView.zoomScale,
+                                              offset: scrollView.contentOffset)
+            guard next != lastReported else { return }
+            lastReported = next
+            parent.onViewportChange(next)
         }
 
         func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) {
