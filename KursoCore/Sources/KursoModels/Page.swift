@@ -52,3 +52,18 @@ import SwiftData
         self.createdAt = createdAt
     }
 }
+
+public extension Page {
+    /// La page du jour pour ce cours, s'il en existe deja une.
+    ///
+    /// Sans cette recherche, chaque appui sur « Ouvrir le cahier » creait une
+    /// page de plus : hors creneau l'emploi du temps ne rattache rien, la page
+    /// restait sans matiere, et la fois suivante on ne la retrouvait pas.
+    static func today(for course: Course?, among pages: [Page],
+                      now: Date = .now, calendar: Calendar = .current) -> Page? {
+        guard let course else { return nil }
+        return pages.first {
+            $0.course?.id == course.id && calendar.isDate($0.createdAt, inSameDayAs: now)
+        }
+    }
+}

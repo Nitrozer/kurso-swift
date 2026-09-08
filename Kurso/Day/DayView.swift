@@ -525,21 +525,40 @@ struct DayView: View {
 
     private func load() {
         player = try? context.fetch(FetchDescriptor<PlayerState>()).first
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-simulateOpenCahier") { simulateOpenTwice() }
+        #endif
         activity = DailyActivityStore.today(context: context)
     }
 
     /// Ouvre la page du jour pour ce cours, ou la cree : c'est le geste qu'on
     /// fait en arrivant en amphi.
+    #if DEBUG
+    /// Rejoue deux appuis sur « Ouvrir le cahier » : ils ne doivent donner
+    /// qu'une seule page.
+    private func simulateOpenTwice() {
+        guard let slot = featuredSlot else { print("[CAHIER] aucun creneau"); return }
+        let before = pages.count
+        openOrCreatePage(for: slot)
+        openOrCreatePage(for: slot)
+        print("[CAHIER] pages avant=\(before) apres deux appuis=\((try? context.fetch(FetchDescriptor<Page>()))?.count ?? -1)")
+    }
+    #endif
+
     private func openOrCreatePage(for slot: TimeSlot) {
-        if let existing = pages.first(where: {
-            $0.course?.id == slot.course?.id && Calendar.current.isDateInToday($0.createdAt)
-        }) {
+        if let existing = Page.today(for: slot.course, among: pages) {
             onOpenPage(existing)
             return
         }
         let page = Page(createdAt: .now)
         context.insert(page)
-        PageAttachment.attach(page, context: context)
+        // Hors creneau, l'emploi du temps ne rattache rien. On relie alors la
+        // page au cours de la carte : sans ca elle reste orpheline, on ne la
+        // retrouve pas, et l'appui suivant en cree encore une.
+        if PageAttachment.attach(page, context: context) == nil {
+            page.course = slot.course
+            page.sessionEnd = slot.end
+        }
         try? context.save()
         onOpenPage(page)
     }

@@ -16,6 +16,6 @@ let package = Package(
     targets: [
         .target(name: "KursoCore"),
         .target(name: "KursoModels"),
-        .testTarget(name: "KursoCoreTests", dependencies: ["KursoCore"]),
+        .testTarget(name: "KursoCoreTests", dependencies: ["KursoCore", "KursoModels"]),
     ]
 )

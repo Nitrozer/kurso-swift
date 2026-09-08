@@ -34,6 +34,16 @@ struct LibraryView: View {
         content
             .task {
                 #if DEBUG
+                // Rejoue un import de PDF, pour voir ce qu'il cree vraiment.
+                if ProcessInfo.processInfo.arguments.contains("-simulateImport") {
+                    let source = URL(filePath: "/tmp/Cours de maths.pdf")
+                    let created = try? PDFImporter.importFile(at: source, course: nil, context: context)
+                    print("[IMPORT] pages creees = \(created?.count ?? -1)")
+                    for p in created ?? [] {
+                        print("[IMPORT]   titre=\(p.title.isEmpty ? "(VIDE)" : p.title) diapo=\(p.pdfPageIndex.map(String.init) ?? "-")")
+                    }
+                    print("[IMPORT] total pages en base = \(pages.count)")
+                }
                 // Sert a photographier le canevas sans passer par le doigt.
                 if ProcessInfo.processInfo.arguments.contains("-openFirstPage") {
                     openedPage = pages.first

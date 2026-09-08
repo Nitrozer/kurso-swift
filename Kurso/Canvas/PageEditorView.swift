@@ -26,6 +26,10 @@ struct PageEditorView: View {
     @State private var pdfImage: CGImage?
     /// Zoom et defilement du canevas, dont le fond se sert pour se caler.
     @State private var viewport = PaperBackdrop.Viewport()
+    /// La zone visible de la diapo, rendue plus finement en zoomant.
+    @State private var pdfTile: PaperBackdrop.Tile?
+    @State private var tileTask: Task<Void, Never>?
+    @Environment(\.displayScale) private var displayScale
     #if os(iOS)
     @State private var canvasHandle = CanvasHandle()
     #endif
@@ -63,7 +67,8 @@ struct PageEditorView: View {
                     template: .ruled,
                     pageSize: CGSize(width: DrawingCanvas.pageWidth,
                                      height: DrawingCanvas.pageHeight),
-                    pdfImage: pdfImage
+                    pdfImage: pdfImage,
+                    pdfTile: pdfTile
                 )
                 DrawingCanvas(
                 drawing: $drawing,
@@ -113,6 +118,15 @@ struct PageEditorView: View {
         }
         #if os(iOS)
         .task { await loadPDF() }
+        .onChange(of: viewport) { scheduleTile() }
+        .task {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-simulateOcclusion") {
+                try? await Task.sleep(for: .seconds(1))
+                isMasking = true
+            }
+            #endif
+        }
         #endif
         .task {
             load()
@@ -256,15 +270,72 @@ struct PageEditorView: View {
     }
 
     #if os(iOS)
+    /// Re-rend la portion visible de la diapo apres un zoom.
+    ///
+    /// Jamais la page entiere : a 5x un A4 demanderait pres de 900 Mo. Ne
+    /// rendre que le visible garde un cout constant, quel que soit le zoom.
+    private func scheduleTile() {
+        guard let base = pdfImage, viewport.size != .zero else { return }
+        tileTask?.cancel()
+
+        // En dessous de ce seuil, l'image de base est deja plus fine que
+        // l'ecran : une tuile n'apporterait rien.
+        guard viewport.zoom > 1.2 else { pdfTile = nil; return }
+
+        let page = CGRect(x: -viewport.offset.x, y: -viewport.offset.y,
+                          width: DrawingCanvas.pageWidth * viewport.zoom,
+                          height: DrawingCanvas.pageHeight * viewport.zoom)
+        let fitted = PaperBackdrop.fitted(CGSize(width: base.width, height: base.height), into: page)
+        let visible = fitted.intersection(CGRect(origin: .zero, size: viewport.size))
+        guard !visible.isNull, visible.width > 8, visible.height > 8 else { return }
+
+        let crop = CGRect(x: (visible.minX - fitted.minX) / fitted.width,
+                          y: (visible.minY - fitted.minY) / fitted.height,
+                          width: visible.width / fitted.width,
+                          height: visible.height / fitted.height)
+        // Plafonne : au-dela, c'est de la memoire depensee pour rien.
+        let pixels = min(Int(visible.width * displayScale), 4_096)
+        let name = pdfFileName
+        let index = page_pdfIndex
+
+        tileTask = Task {
+            // On laisse le geste se terminer : re-rendre a chaque image du
+            // pincement ne servirait qu'a chauffer l'appareil.
+            try? await Task.sleep(for: .milliseconds(160))
+            guard !Task.isCancelled, let name, let index else { return }
+            let rendered = await Task.detached(priority: .userInitiated) {
+                PDFStore.render(fileName: name, pageIndex: index, crop: crop, pixelWidth: pixels)
+            }.value
+            guard !Task.isCancelled, let rendered else { return }
+            pdfTile = PaperBackdrop.Tile(image: rendered, crop: crop)
+        }
+    }
+
+    /// Nom de fichier de la diapo, ou le PDF d'essai en debogage.
+    private var pdfFileName: String? {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-fakePDF") { return "test-diapo.pdf" }
+        #endif
+        return pdfAsset?.fileName
+    }
+
+    private var page_pdfIndex: Int? {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-fakePDF") { return 0 }
+        #endif
+        return page.pdfPageIndex
+    }
+
     private func loadPDF() async {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-fakePDF") {
-            pdfImage = Self.debugPage()
-            return
+            Self.installTestPDF()
+            // La page de demo n'a pas de diapo : on lui en attache une, sans
+            // quoi les ecrans qui en dependent ne s'affichent pas.
+            if page.pdfPageIndex == nil { page.pdfPageIndex = 0 }
         }
         #endif
-        guard let asset = pdfAsset, let index = page.pdfPageIndex else { return }
-        let fileName = asset.fileName
+        guard let fileName = pdfFileName, let index = page_pdfIndex else { return }
         // La largeur est lue ici, sur l'acteur principal, avant de partir en
         // tache detachee.
         let width = DrawingCanvas.pageWidth * 2
@@ -276,21 +347,12 @@ struct PageEditorView: View {
     #endif
 
     #if DEBUG && os(iOS)
-    /// Une fausse diapo, pour verifier que le fond PDF s'affiche.
-    private static func debugPage() -> CGImage? {
-        let size = CGSize(width: 1_240, height: 1_754)
-        let renderer = UIGraphicsImageRenderer(size: size)
-        return renderer.image { ctx in
-            UIColor.white.setFill()
-            ctx.fill(CGRect(origin: .zero, size: size))
-            UIColor.systemIndigo.setFill()
-            ctx.fill(CGRect(x: 80, y: 120, width: 1_080, height: 180))
-            UIColor.systemOrange.setFill()
-            ctx.fill(CGRect(x: 80, y: 400, width: 520, height: 520))
-            UIColor.darkGray.setStroke()
-            ctx.cgContext.setLineWidth(6)
-            ctx.cgContext.stroke(CGRect(x: 30, y: 30, width: size.width - 60, height: size.height - 60))
-        }.cgImage
+    /// Depose le PDF d'essai dans le conteneur, pour verifier le vrai chemin
+    /// de rendu — orientation comprise.
+    private static func installTestPDF() {
+        let destination = PDFStore.url(for: "test-diapo.pdf")
+        guard !FileManager.default.fileExists(atPath: destination.path) else { return }
+        try? FileManager.default.copyItem(at: URL(filePath: "/tmp/test-diapo.pdf"), to: destination)
     }
     #endif
 

@@ -42,6 +42,16 @@ struct OcclusionLayer: View {
                 }
                 .frame(maxWidth: .infinity)
             }
+            #if DEBUG
+            .task {
+                // Rejoue le geste de masquage sans passer par le doigt.
+                guard ProcessInfo.processInfo.arguments.contains("-simulateOcclusion") else { return }
+                try? await Task.sleep(for: .seconds(2))
+                print("[MASQUE] creation d'une zone…")
+                createCard(CGRect(x: 60, y: 80, width: 220, height: 140), in: geo.size)
+                print("[MASQUE] zone creee, total=\(existingRects.count)")
+            }
+            #endif
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 8)
