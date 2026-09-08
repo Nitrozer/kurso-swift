@@ -87,6 +87,23 @@ struct DrawingCanvas: UIViewRepresentable {
         // En dernier : brancher le delegue avant d'avoir pose le trace initial
         // faisait passer ce trace pour une modification de l'utilisateur.
         canvas.delegate = context.coordinator
+
+        #if DEBUG
+        // Reproduit un trait reel : debut d'outil, trace, fin d'outil. C'est
+        // exactement le chemin qu'emprunte le stylet.
+        if ProcessInfo.processInfo.arguments.contains("-simulateStroke") {
+            let coordinator = context.coordinator
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                coordinator.canvasViewDidBeginUsingTool(canvas)
+                var strokes = canvas.drawing.strokes
+                strokes.append(Self.debugStroke(atY: 300 + CGFloat(strokes.count) * 60))
+                canvas.drawing = PKDrawing(strokes: strokes)
+                coordinator.canvasViewDidEndUsingTool(canvas)
+                print("[KURSO] trait simule, total=\(canvas.drawing.strokes.count)")
+            }
+        }
+        #endif
+
         return canvas
     }
 
@@ -104,6 +121,19 @@ struct DrawingCanvas: UIViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    #if DEBUG
+    /// Un trait droit, uniquement pour les essais automatises.
+    static func debugStroke(atY y: CGFloat) -> PKStroke {
+        let ink = PKInk(.pen, color: .black)
+        let points = (0..<40).map { i in
+            PKStrokePoint(location: CGPoint(x: 80 + Double(i) * 12, y: Double(y)),
+                          timeOffset: Double(i) / 100, size: CGSize(width: 4, height: 4),
+                          opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2)
+        }
+        return PKStroke(ink: ink, path: PKStrokePath(controlPoints: points, creationDate: Date()))
+    }
+    #endif
 
     final class Coordinator: NSObject, PKCanvasViewDelegate {
         private let parent: DrawingCanvas

@@ -40,6 +40,9 @@ struct PageEditorView: View {
         _drawing = State(initialValue: loaded ?? PKDrawing())
         // On n'ecrase pas ce qu'on n'a pas su relire.
         _loadFailed = State(initialValue: hasStored && loaded == nil)
+        #if DEBUG
+        print("[KURSO] ouverture traits=\(loaded?.strokes.count ?? -1) octets=\(stored?.count ?? 0)")
+        #endif
     }
 
     var body: some View {
@@ -55,6 +58,7 @@ struct PageEditorView: View {
                 }
                 DrawingCanvas(
                 drawing: $drawing,
+                handle: canvasHandle,
                 onBeginWriting: { clock.begin(at: .now) },
                 onEndWriting: { latest in
                     clock.end(at: .now)
@@ -97,7 +101,18 @@ struct PageEditorView: View {
         )) { draft in
             CapturePrompt(page: page, answer: draft.drawing) { pendingCapture = nil }
         }
-        .task { load() }
+        .task {
+            load()
+            #if DEBUG
+            // Rejoue le geste complet : on ecrit, puis on appuie sur retour.
+            if ProcessInfo.processInfo.arguments.contains("-simulateBack") {
+                try? await Task.sleep(for: .seconds(6))
+                print("[KURSO] --- appui sur retour ---")
+                persist()
+                onClose()
+            }
+            #endif
+        }
         .onDisappear {
             persist()
         }
@@ -232,10 +247,25 @@ struct PageEditorView: View {
         // Ordre de confiance : le trace passe en argument, sinon celui du
         // canevas vivant, et l'etat SwiftUI seulement en dernier recours.
         #if os(iOS)
-        let toSave = latest ?? canvasHandle.currentDrawing ?? drawing
+        let live = canvasHandle.currentDrawing
+        let toSave = latest ?? live ?? drawing
+        let source = latest != nil ? "argument" : (live != nil ? "canevas" : "etat")
         #else
         let toSave = latest ?? drawing
+        let source = latest != nil ? "argument" : "etat"
         #endif
+
+        // Un enregistrement sans argument vient d'un demontage de vue, pas
+        // d'un geste : il n'a pas le droit de vider la page (§DrawingSaveGuard).
+        let storedStrokes = (page.drawing.flatMap { try? PKDrawing(data: $0) })?.strokes.count ?? 0
+        guard DrawingSaveGuard.shouldWrite(incomingStrokes: toSave.strokes.count,
+                                           storedStrokes: storedStrokes,
+                                           origin: latest != nil ? .gesture : .teardown) else {
+            #if DEBUG
+            print("[KURSO] enregistrement vide refuse (\(storedStrokes) traits conserves)")
+            #endif
+            return
+        }
         let before = page.writingSeconds
         page.writingSeconds = clock.seconds(now: .now)
         // Une page compte pour la quete des qu'elle passe dix minutes d'ecriture
@@ -245,7 +275,15 @@ struct PageEditorView: View {
         }
         displayedSeconds = page.writingSeconds
         page.drawing = toSave.dataRepresentation()
-        try? context.save()
+        do { try context.save() }
+        catch {
+            #if DEBUG
+            print("[KURSO] ECHEC ENREGISTREMENT: \(error)")
+            #endif
+        }
+        #if DEBUG
+        print("[KURSO] persist traits=\(toSave.strokes.count) octets=\(page.drawing?.count ?? 0) source=\(source)")
+        #endif
         scheduleRecognition(toSave)
     }
 
