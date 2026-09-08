@@ -48,9 +48,8 @@ final class PaperBackedCanvas: PKCanvasView {
 }
 
 struct DrawingCanvas: UIViewRepresentable {
-    /// Format d'une page, en points. Proche d'un A4 a l'echelle de l'ecran.
-    static let pageWidth: CGFloat = 1_240
-    static let pageHeight: CGFloat = 3_000
+    static var pageWidth: CGFloat { PaperBackdrop.pageWidth }
+    static var pageHeight: CGFloat { PaperBackdrop.pageHeight }
 
     @Binding var drawing: PKDrawing
     var handle: CanvasHandle?

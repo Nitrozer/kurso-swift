@@ -67,3 +67,31 @@ public extension Page {
         }
     }
 }
+
+public extension Page {
+    /// Un PDF depose vaut UNE entree dans les cahiers, pas une par diapo.
+    ///
+    /// Chaque diapo reste une page a part entiere — elle porte ses propres
+    /// annotations — mais les voir toutes alignees donnait l'impression que
+    /// l'application fabriquait des notes toute seule.
+    static func collapsingSlides(_ pages: [Page]) -> [Page] {
+        var kept: [UUID: Page] = [:]
+        var out: [Page] = []
+        for page in pages {
+            guard let asset = page.pdfAssetID else { out.append(page); continue }
+            // On garde la PREMIERE diapo, pas celle qui passe en premier dans
+            // la requete : c'est elle qu'on ouvre en touchant la vignette.
+            if let existing = kept[asset] {
+                if (page.pdfPageIndex ?? 0) < (existing.pdfPageIndex ?? 0),
+                   let slot = out.firstIndex(where: { $0.id == existing.id }) {
+                    out[slot] = page
+                    kept[asset] = page
+                }
+            } else {
+                kept[asset] = page
+                out.append(page)
+            }
+        }
+        return out
+    }
+}

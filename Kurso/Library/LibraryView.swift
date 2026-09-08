@@ -60,7 +60,9 @@ struct LibraryView: View {
 
     @ViewBuilder private var content: some View {
         if let page = openedPage {
-            PageEditorView(page: page, onClose: { openedPage = nil })
+            PageEditorView(page: page,
+                           onClose: { openedPage = nil },
+                           onOpenSlide: { openedPage = $0 })
                 .id(page.id)
         } else {
             library
@@ -294,6 +296,7 @@ struct LibraryView: View {
                             LazyVGrid(columns: columns, spacing: 16) {
                                 ForEach(day.items) { page in
                                     PageCard(page: page,
+                                             slideCount: slideCount(of: page),
                                              action: { openedPage = page },
                                              onDelete: { pageToDelete = page })
                                 }
@@ -362,8 +365,17 @@ struct LibraryView: View {
     }
 
     private var visiblePages: [Page] {
-        guard let course = selectedCourse else { return pages }
-        return pages.filter { $0.course?.id == course.id }
+        let byCourse = selectedCourse.map { course in
+            pages.filter { $0.course?.id == course.id }
+        } ?? pages
+        return Page.collapsingSlides(byCourse)
+    }
+
+    /// Nombre de diapos d'un PDF, pour l'afficher sur sa vignette.
+    private func slideCount(of page: Page) -> Int? {
+        guard let asset = page.pdfAssetID else { return nil }
+        let count = pages.filter { $0.pdfAssetID == asset }.count
+        return count > 1 ? count : nil
     }
 
     private var days: [DayGrouping.Day<Page>] {

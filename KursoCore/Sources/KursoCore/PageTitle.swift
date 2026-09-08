@@ -44,3 +44,16 @@ public enum PageTitle {
         return line.isEmpty ? nil : line
     }
 }
+
+public extension PageTitle {
+    /// Retire le « — 3 » d'un titre de diapo.
+    ///
+    /// Les diapos d'un PDF sont numerotees une par une, mais les cahiers n'en
+    /// montrent qu'une entree : le numero n'y veut plus rien dire.
+    static func withoutSlideNumber(_ title: String) -> String {
+        guard let separator = title.range(of: " — ", options: .backwards) else { return title }
+        let tail = title[separator.upperBound...]
+        guard !tail.isEmpty, tail.allSatisfy(\.isNumber) else { return title }
+        return String(title[..<separator.lowerBound])
+    }
+}

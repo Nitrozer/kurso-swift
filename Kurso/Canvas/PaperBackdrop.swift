@@ -10,6 +10,12 @@ import SwiftUI
 /// ses lignes a l'echelle courante. Il reste net a n'importe quel zoom parce
 /// qu'il est retrace, jamais agrandi.
 struct PaperBackdrop: View {
+    /// Format d'une page, en points. Proche d'un A4 a l'echelle de l'ecran.
+    /// Vit ici plutot que dans le canevas : le canevas est iOS seulement.
+    static let pageWidth: CGFloat = 1_240
+    static let pageHeight: CGFloat = 3_000
+    static var pageSize: CGSize { CGSize(width: pageWidth, height: pageHeight) }
+
     struct Viewport: Equatable {
         var zoom: CGFloat = 1
         var offset: CGPoint = .zero

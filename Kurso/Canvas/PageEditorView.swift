@@ -9,6 +9,8 @@ import KursoModels
 struct PageEditorView: View {
     @Bindable var page: Page
     var onClose: () -> Void = {}
+    /// Ouvre une autre diapo du meme PDF.
+    var onOpenSlide: (Page) -> Void = { _ in }
     @Environment(\.modelContext) private var context
 
     @State private var drawing: PKDrawing
@@ -34,6 +36,7 @@ struct PageEditorView: View {
     @State private var canvasHandle = CanvasHandle()
     #endif
     @Query private var assets: [PDFAsset]
+    @Query private var allPages: [Page]
     @Query(sort: \Course.name) private var courses: [Course]
 
     /// Le trace est lu ICI, avant que la vue existe.
@@ -41,9 +44,12 @@ struct PageEditorView: View {
     /// Le charger plus tard laissait une fenetre ou le canevas etait construit
     /// vide : PencilKit signalait ce vide comme un changement, on l'enregistrait
     /// par-dessus la page, et le travail etait perdu a la simple ouverture.
-    init(page: Page, onClose: @escaping () -> Void = {}) {
+    init(page: Page,
+         onClose: @escaping () -> Void = {},
+         onOpenSlide: @escaping (Page) -> Void = { _ in }) {
         _page = Bindable(page)
         self.onClose = onClose
+        self.onOpenSlide = onOpenSlide
         let stored = page.drawing
         let hasStored = !(stored ?? Data()).isEmpty
         let loaded = hasStored ? try? PKDrawing(data: stored!) : PKDrawing()
@@ -82,7 +88,12 @@ struct PageEditorView: View {
                 }
             )
                 if isMasking, let index = page.pdfPageIndex {
-                    OcclusionLayer(page: page, pageIndex: index) { isMasking = false }
+                    OcclusionLayer(
+                        page: page,
+                        pageIndex: index,
+                        viewport: viewport,
+                        slideSize: pdfImage.map { CGSize(width: $0.width, height: $0.height) } ?? .zero
+                    ) { isMasking = false }
                 }
                 if isCapturing {
                     CaptureLayer(
@@ -164,10 +175,26 @@ struct PageEditorView: View {
             .accessibilityLabel("Retour aux pages")
 
             VStack(alignment: .leading, spacing: 3) {
-                DisplayText(page.title.isEmpty ? "Page sans titre" : page.title, size: 19)
+                // Modifiable au clavier. Tant qu'on n'y touche pas, c'est la
+                // premiere ligne reconnue qui nomme la page (§4) — d'ou le
+                // drapeau, qui empeche la reconnaissance d'ecraser un choix.
+                TextField("Page sans titre", text: Binding(
+                    get: { page.title },
+                    set: { newValue in
+                        page.title = newValue
+                        page.titleWasEdited = !newValue.trimmingCharacters(in: .whitespaces).isEmpty
+                        try? context.save()
+                    }
+                ))
+                .textFieldStyle(.plain)
+                .font(KFont.display(19))
+                .foregroundStyle(K.ink)
+                .frame(minWidth: 120, idealWidth: 240, maxWidth: 320, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
                 MetaText(page.createdAt.formatted(.dateTime.weekday(.wide).day().month(.wide)))
             }
             coursePicker
+            slideNav
             Spacer()
             if loadFailed {
                 // Un dessin illisible ne doit jamais etre ecrase en silence (§8).
@@ -219,6 +246,50 @@ struct PageEditorView: View {
     /// Le rattachement automatique ne joue que pendant un creneau. Hors cours,
     /// il faut pouvoir ranger sa page soi-meme — sinon une note ecrite le
     /// dimanche reste orpheline pour toujours.
+    /// Passer d'une diapo a l'autre sans repasser par les cahiers : les diapos
+    /// d'un meme PDF n'y forment plus qu'une seule entree.
+    @ViewBuilder private var slideNav: some View {
+        let siblings = slideSiblings
+        if siblings.count > 1, let position = siblings.firstIndex(where: { $0.id == page.id }) {
+            HStack(spacing: 8) {
+                Button { jump(to: siblings, position - 1) } label: { navChevron(flipped: false) }
+                    .buttonStyle(.plain)
+                    .disabled(position == 0)
+                    .opacity(position == 0 ? 0.35 : 1)
+                Text("\(position + 1) / \(siblings.count)")
+                    .font(KFont.mono(11))
+                    .foregroundStyle(K.inkSoft)
+                Button { jump(to: siblings, position + 1) } label: { navChevron(flipped: true) }
+                    .buttonStyle(.plain)
+                    .disabled(position == siblings.count - 1)
+                    .opacity(position == siblings.count - 1 ? 0.35 : 1)
+            }
+        }
+    }
+
+    private func navChevron(flipped: Bool) -> some View {
+        ChevronGlyph()
+            .stroke(K.ink, style: StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round))
+            .frame(width: 11, height: 11)
+            .rotationEffect(.degrees(flipped ? 180 : 0))
+            .frame(width: 30, height: 30)
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(K.ink, lineWidth: 2))
+    }
+
+    private var slideSiblings: [Page] {
+        guard let asset = page.pdfAssetID else { return [] }
+        return allPages
+            .filter { $0.pdfAssetID == asset }
+            .sorted { ($0.pdfPageIndex ?? 0) < ($1.pdfPageIndex ?? 0) }
+    }
+
+    private func jump(to siblings: [Page], _ index: Int) {
+        guard siblings.indices.contains(index) else { return }
+        persist()
+        onOpenSlide(siblings[index])
+    }
+
     @ViewBuilder private var coursePicker: some View {
         if !courses.isEmpty {
             Menu {

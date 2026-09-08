@@ -9,6 +9,8 @@ import KursoModels
 /// representer le manuscrit DANS LES MAQUETTES, l'app affiche l'encre reelle.
 struct PageCard: View {
     let page: Page
+    /// Nombre de diapos quand la vignette represente un PDF entier.
+    var slideCount: Int?
     var isActive = false
     var action: () -> Void
     var onDelete: (() -> Void)? = nil
@@ -49,18 +51,32 @@ struct PageCard: View {
         .clipped()
     }
 
+    /// Une vignette qui represente tout un PDF porte son nom, sans numero.
+    private var displayTitle: String {
+        guard !page.title.isEmpty else { return "Sans titre" }
+        return slideCount == nil ? page.title : PageTitle.withoutSlideNumber(page.title)
+    }
+
     private var footer: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(page.createdAt, format: .dateTime.day().month(.twoDigits))
                     .font(KFont.mono(9))
                     .foregroundStyle(K.inkSoft)
+                if let slideCount {
+                    Text("\(slideCount) diapos")
+                        .font(KFont.mono(9))
+                        .foregroundStyle(K.ink)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(K.reward, in: Capsule())
+                        .overlay(Capsule().strokeBorder(K.ink, lineWidth: 1.5))
+                }
                 Spacer()
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .fill(freshnessColor)
                     .frame(width: 9, height: 9)
             }
-            Text(page.title.isEmpty ? "Sans titre" : page.title)
+            Text(displayTitle)
                 .font(KFont.body(12, weight: .extraBold))
                 .foregroundStyle(K.ink)
                 .lineLimit(2)
