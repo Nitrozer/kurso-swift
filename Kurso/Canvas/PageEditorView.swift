@@ -46,8 +46,12 @@ struct PageEditorView: View {
     @State private var isPickingPDF = false
     @State private var pendingPDF: PickedPDF?
     @State private var isAdjustingPhoto = false
-    @State private var isPickingPhotoForPage = false
-    @State private var isPickingPlaced = false
+    /// Pourquoi on ouvre le selecteur de photos.
+    ///
+    /// Un seul `.photosPicker` par vue : en poser deux les fait se neutraliser,
+    /// et aucun ne s'ouvrait.
+    private enum PhotoPurpose { case background, placed }
+    @State private var photoPurpose: PhotoPurpose?
     @State private var recorder = LectureRecorder()
     /// Les traits horodates de l'enregistrement en cours.
     @State private var marks: [StrokeTimestamp] = []
@@ -59,7 +63,6 @@ struct PageEditorView: View {
     /// L'image touchee, s'il y en a une.
     @State private var selectedImage: UUID?
     /// Une image ajoutee depuis le panneau, pas en fond de page.
-    @State private var pickedPlaced: PhotosPickerItem?
     /// Le volet des cartes capturees. On l'enleve pour ecrire large.
     @State private var exportProgress: Double?
     @State private var exported: ExportedFile?
@@ -284,6 +287,12 @@ struct PageEditorView: View {
         #endif
         #if os(iOS)
         .sheet(item: $exported) { ShareSheet(url: $0.url) }
+        #if os(iOS)
+        .photosPicker(isPresented: Binding(
+            get: { photoPurpose != nil },
+            set: { if !$0 { photoPurpose = nil } }
+        ), selection: $pickedPhoto, matching: .images)
+        #endif
         .alert("Enregistrement",
                isPresented: Binding(get: { audioNotice != nil },
                                     set: { if !$0 { audioNotice = nil } })) {
@@ -313,17 +322,19 @@ struct PageEditorView: View {
         .animation(.snappy(duration: 0.28), value: marginShown)
         #if os(iOS)
         .onChange(of: pickedPhoto) { _, item in
-            guard let item else { return }
-            Task { await adopt(item) }
-        }
-        .onChange(of: pickedPlaced) { _, item in
-            guard let item else { return }
-            Task { await adoptPlaced(item) }
+            guard let item, let purpose = photoPurpose else { return }
+            Task {
+                switch purpose {
+                case .background: await adopt(item)
+                case .placed:     await adoptPlaced(item)
+                }
+                photoPurpose = nil
+            }
         }
         .task { reloadPlaced() }
         #if os(iOS)
         .onChange(of: addImageRequest) { _, value in
-            if value != nil { isPickingPlaced = true }
+            if value != nil { photoPurpose = .placed }
         }
         #endif
         #endif
@@ -549,7 +560,7 @@ struct PageEditorView: View {
     /// Une image ajoutee se pose en haut de page, a mi-largeur : de la on la
     /// deplace et on la retaille comme on veut.
     private func adoptPlaced(_ item: PhotosPickerItem) async {
-        defer { pickedPlaced = nil }
+        defer { pickedPhoto = nil }
         guard let raw = try? await item.loadTransferable(type: Data.self),
               let source = UIImage(data: raw) else { return }
         let maxSide: CGFloat = 1_600
@@ -652,7 +663,7 @@ struct PageEditorView: View {
                     }
                 }
             }
-            Button("Ajouter une image") { isPickingPlaced = true }
+            Button("Ajouter une image") { photoPurpose = .placed }
             if hasBackdrop {
                 Button(isCapturingRegion ? "Annuler la capture" : "Capturer un morceau") {
                     isCapturingRegion.toggle()
@@ -701,8 +712,6 @@ struct PageEditorView: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .photosPicker(isPresented: $isPickingPhotoForPage,
-                      selection: $pickedPhoto, matching: .images)
     }
 
     private func exportCurrent() {

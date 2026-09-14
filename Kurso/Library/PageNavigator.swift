@@ -15,21 +15,21 @@ struct PageNavigator: View {
     var onAdd: (Kind, Double) -> Void
     var onDuplicate: (Page) -> Void
     var onDelete: (Page) -> Void
-    /// Poser une image sur la page ouverte, pas en creer une nouvelle.
-    var onAddImageHere: () -> Void = {}
     var onCollapse: () -> Void = {}
 
     enum Kind { case handwritten, pdf, image }
 
     var body: some View {
         VStack(spacing: 0) {
-            addBar
-            currentPageBar
+            collapseBar
             ScrollView {
                 LazyVStack(spacing: 12) {
                     ForEach(Array(pages.enumerated()), id: \.element.id) { index, page in
                         thumbnail(page, number: index + 1)
                     }
+                    // L'emplacement suivant, en pointilles : on voit ou la
+                    // prochaine page ira avant meme de l'avoir creee.
+                    nextSlot
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 14)
@@ -38,6 +38,59 @@ struct PageNavigator: View {
         }
         .frame(width: 168)
         .background(K.paper)
+    }
+
+    /// Le seul bouton de la barre : refermer le panneau.
+    private var collapseBar: some View {
+        HStack {
+            Button { onCollapse() } label: {
+                ChevronGlyph()
+                    .stroke(K.ink, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                    .frame(width: 9, height: 9)
+                    .frame(width: 34, height: 34)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Replier les pages")
+            Spacer(minLength: 0)
+            Text("\(pages.count) page\(pages.count > 1 ? "s" : "")")
+                .font(KFont.mono(9.5))
+                .foregroundStyle(K.inkSoft)
+                .padding(.trailing, 14)
+        }
+        .background(K.paperAlt)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(K.ink.opacity(0.12)).frame(height: 1)
+        }
+    }
+
+    /// L'emplacement de la page suivante : grise, avec un plus dedans.
+    private var nextSlot: some View {
+        Menu {
+            Button("Page manuscrite") { onAdd(.handwritten, end) }
+            Button("Pages d'un PDF") { onAdd(.pdf, end) }
+            Button("Une image") { onAdd(.image, end) }
+        } label: {
+            VStack(spacing: 5) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(K.ink.opacity(0.03))
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(K.ink.opacity(0.3),
+                                      style: StrokeStyle(lineWidth: 2, dash: [7, 5]))
+                    VStack(spacing: 6) {
+                        Glyph(kind: .plus, size: 18, color: K.ink.opacity(0.45))
+                        Text("Ajouter")
+                            .font(KFont.body(10.5, weight: .extraBold))
+                            .foregroundStyle(K.ink.opacity(0.45))
+                    }
+                }
+                .frame(width: 108, height: 148)
+                Text("\(pages.count + 1)")
+                    .font(KFont.mono(9.5))
+                    .foregroundStyle(K.inkSoft.opacity(0.6))
+            }
+        }
+        .menuStyle(.borderlessButton)
     }
 
     // MARK: Une vignette
@@ -76,64 +129,6 @@ struct PageNavigator: View {
     }
 
     // MARK: Ajouter
-
-    /// Ce qu'on pose SUR la page ouverte, distinct de ce qui cree une page.
-    /// En haut comme le reste : la palette PencilKit flotte en bas.
-    private var currentPageBar: some View {
-        Button { onAddImageHere() } label: {
-            HStack(spacing: 8) {
-                Glyph(kind: .plus, size: 12)
-                Text("Image sur cette page")
-                    .font(KFont.body(11.5, weight: .extraBold))
-                    .foregroundStyle(K.ink)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 11)
-            .background(K.paper)
-            .overlay(alignment: .bottom) {
-                Rectangle().fill(K.ink.opacity(0.12)).frame(height: 1)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    /// En HAUT du panneau : la palette PencilKit flotte en bas et recouvrait
-    /// entierement ce bouton.
-    private var addBar: some View {
-        HStack(spacing: 0) {
-            Button { onCollapse() } label: {
-                ChevronGlyph()
-                    .stroke(K.ink, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
-                    .frame(width: 9, height: 9)
-                    .frame(width: 34, height: 40)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Replier les pages")
-            menuBar
-        }
-        .background(K.paperAlt)
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(K.ink.opacity(0.12)).frame(height: 1)
-        }
-    }
-
-    private var menuBar: some View {
-        Menu {
-            Button("Page manuscrite") { onAdd(.handwritten, end) }
-            Button("Pages d'un PDF") { onAdd(.pdf, end) }
-            Button("Une image") { onAdd(.image, end) }
-        } label: {
-            HStack(spacing: 8) {
-                Glyph(kind: .plus, size: 13)
-                Text("Ajouter une page")
-                    .font(KFont.body(12.5, weight: .extraBold))
-                    .foregroundStyle(K.ink)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-        }
-        .menuStyle(.borderlessButton)
-    }
 
     // MARK: Rangs
 

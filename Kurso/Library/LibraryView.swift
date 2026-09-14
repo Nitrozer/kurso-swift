@@ -67,6 +67,10 @@ struct LibraryView: View {
                    let first = courses.first {
                     customising = first
                 }
+                if ProcessInfo.processInfo.arguments.contains("-openLoose") {
+                    showsLoose = true
+                    openFirst(of: nil)
+                }
                 if ProcessInfo.processInfo.arguments.contains("-selectFirstCourse"),
                    let first = courses.first {
                     openedCourse = first
@@ -147,7 +151,6 @@ struct LibraryView: View {
                     },
                     onDuplicate: { duplicate($0) },
                     onDelete: { pageToDelete = $0 },
-                    onAddImageHere: { addImageRequest = UUID() },
                     onCollapse: { navigatorShown = false }
                 )
                 .transition(.move(edge: .leading))
