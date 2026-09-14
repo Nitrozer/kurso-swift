@@ -31,6 +31,9 @@ import SwiftData
     public var lastStreakDay: Date?
     /// Couvertures de cahier achetees. Uniquement de l'apparence (§9).
     public var ownedCovers: [String] = []
+    /// Dernier niveau dont le coffre a ete ouvert. Sans lui, le meme coffre
+    /// retomberait a chaque lancement de l'application (§9).
+    public var lastChestLevel: Int = 1
 
     public init() {}
 }

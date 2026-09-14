@@ -19,6 +19,8 @@ struct ReviewSessionView: View {
     @State private var isMistakeBookRun = false
     /// A l'approche d'un partiel, la session change de forme (§9).
     @State private var isExamMode = false
+    /// Les coffres gagnes pendant la session, en attente d'etre ouverts.
+    @State private var chestRewards: [ChestStore.Reward] = []
 
     var body: some View {
         Group {
@@ -39,10 +41,28 @@ struct ReviewSessionView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(K.paper)
+        .sheet(isPresented: Binding(get: { !chestRewards.isEmpty },
+                                    set: { if !$0 { chestRewards = [] } })) {
+            ChestView(rewards: chestRewards) { chestRewards = [] }
+        }
         .task {
             loadPlayer()
             isExamMode = SeasonStore.isExamMode(context)
             #if DEBUG
+            // Ferme la fenetre de partiel : sert a verifier que les coffres
+            // retenus par le mode partiel retombent bien apres, sans etre perdus.
+            if ProcessInfo.processInfo.arguments.contains("-examOver") {
+                SeasonStore.current(context)?.examDate = nil
+                try? context.save()
+                isExamMode = SeasonStore.isExamMode(context)
+            }
+            if ProcessInfo.processInfo.arguments.contains("-simulateChest") {
+                let won = ChestStore.claim(context, isExamMode: isExamMode)
+                print("[chest] \(won.count) coffre(s) : " + won.map {
+                    "n\($0.level)=\($0.shavings)cp" + ($0.cover.map { c in "+\(c.rawValue)" } ?? "")
+                }.joined(separator: " "))
+                chestRewards = won
+            }
             // Permet d'inspecter l'ecran de carte sans pouvoir taper.
             if ProcessInfo.processInfo.arguments.contains("-autoStartReview"), session == nil {
                 begin()
@@ -426,6 +446,12 @@ struct ReviewSessionView: View {
                 card.isInMistakeBook = false
             }
             try? context.save()
+        }
+
+        // Le coffre tombe a la fin de la session, pas au milieu d'une carte :
+        // on ne coupe pas quelqu'un qui enchaine.
+        if session.outcome != .inProgress {
+            chestRewards = ChestStore.claim(context, isExamMode: isExamMode)
         }
 
         self.session = session

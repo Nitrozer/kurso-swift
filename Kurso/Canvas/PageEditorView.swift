@@ -7,7 +7,7 @@ import KursoCore
 import KursoModels
 
 /// Editeur d'une page. Sur iPad, le canevas PencilKit ; sur Mac, un ecran
-/// d'attente en attendant le volet markdown (§11, etape 1).
+/// Mac : l.ecriture se relit a cote du volet markdown (§11, etape 1).
 struct PageEditorView: View {
     @Bindable var page: Page
     var onClose: () -> Void = {}
