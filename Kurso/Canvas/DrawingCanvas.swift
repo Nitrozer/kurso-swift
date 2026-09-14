@@ -141,6 +141,11 @@ struct DrawingCanvas: UIViewRepresentable {
         }
     }
 
+    /// Appele quand la vue disparait : c'est la qu'on range la palette.
+    static func dismantleUIView(_ canvas: PaperBackedCanvas, coordinator: Coordinator) {
+        coordinator.detachToolPicker(from: canvas)
+    }
+
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     #if DEBUG
@@ -170,6 +175,18 @@ struct DrawingCanvas: UIViewRepresentable {
             picker.addObserver(canvas)
             canvas.becomeFirstResponder()
             toolPicker = picker
+        }
+
+        /// La palette n'appartient qu'a la feuille.
+        ///
+        /// Sans ce rangement, elle restait affichee par-dessus l'accueil, la
+        /// carte du semestre et les fiches : PencilKit la laisse a l'ecran
+        /// tant que le canevas garde le premier repondant.
+        func detachToolPicker(from canvas: PKCanvasView) {
+            toolPicker?.setVisible(false, forFirstResponder: canvas)
+            toolPicker?.removeObserver(canvas)
+            canvas.resignFirstResponder()
+            toolPicker = nil
         }
 
         /// Le fond, derriere, se cale sur ces deux valeurs.

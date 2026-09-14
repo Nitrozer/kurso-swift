@@ -37,6 +37,15 @@ struct AppShell: View {
                 .overlay(alignment: .bottomLeading) { railToggle }
         }
         .animation(.snappy(duration: 0.28), value: railShown)
+        #if DEBUG
+        .task {
+            // Rejoue le geste : on ecrit, puis on part ailleurs. La palette
+            // ne doit pas suivre.
+            guard ProcessInfo.processInfo.arguments.contains("-simulateLeavePage") else { return }
+            try? await Task.sleep(for: .seconds(6))
+            tab = .day
+        }
+        #endif
         // Le rail descend jusqu'en bas mais pas sous la barre d'etat : l'heure
         // du systeme est ecrite en sombre et deviendrait illisible sur le
         // graphite. Le prototype n'a pas ce probleme, c'est une maquette sans

@@ -252,6 +252,10 @@ struct PageEditorView: View {
         #endif
         .onDisappear {
             persist()
+            #if os(iOS)
+            // Filet : quitter l'onglet ne demonte pas toujours le canevas.
+            canvasHandle.canvas?.resignFirstResponder()
+            #endif
         }
     }
 
