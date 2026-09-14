@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import PhotosUI
 import UniformTypeIdentifiers
 import KursoCore
 import KursoModels
@@ -32,6 +33,10 @@ struct LibraryView: View {
     #if os(iOS)
     @State private var exported: ExportedFile?
     @State private var pendingPDF: PickedPDF?
+    /// Ou deposer les diapos qu'on est en train de choisir.
+    @State private var insertionBounds: (after: Double?, before: Double?) = (nil, nil)
+    @State private var pickedPhoto: PhotosPickerItem?
+    @State private var photoPosition: Double?
     #endif
     @FocusState private var isSearching: Bool
 
@@ -41,6 +46,10 @@ struct LibraryView: View {
                 #if DEBUG
                 // Rejoue un import de PDF, pour voir ce qu'il cree vraiment.
                 #if os(iOS)
+                if ProcessInfo.processInfo.arguments.contains("-selectFirstCourse"),
+                   let first = courses.first {
+                    selection = .course(first.id)
+                }
                 if ProcessInfo.processInfo.arguments.contains("-simulatePicker") {
                     pendingPDF = PickedPDF(url: URL(filePath: "/tmp/Cours de maths.pdf"))
                 }
@@ -100,6 +109,14 @@ struct LibraryView: View {
         }
         #if os(iOS)
         .sheet(item: $exported) { ShareSheet(url: $0.url) }
+        .photosPicker(isPresented: Binding(
+            get: { photoPosition != nil },
+            set: { if !$0 { photoPosition = nil } }
+        ), selection: $pickedPhoto, matching: .images)
+        .onChange(of: pickedPhoto) { _, item in
+            guard let item, let position = photoPosition else { return }
+            Task { await adoptPhoto(item, at: position) }
+        }
         #endif
         .confirmationDialog(
             "Supprimer cette page ?",
@@ -127,7 +144,8 @@ struct LibraryView: View {
                 onConfirm: { chosen in
                     let created = try? PDFImporter.importFile(
                         at: picked.url, course: selectedCourse,
-                        selected: chosen, context: context)
+                        selected: chosen, between: insertionBounds, context: context)
+                    insertionBounds = (nil, nil)
                     pendingPDF = nil
                     openedPage = created?.first
                 }
@@ -222,6 +240,9 @@ struct LibraryView: View {
             if PageAttachment.attach(page, context: context) == nil {
                 page.course = selectedCourse
             }
+            // A la fin de son cahier, pas au debut.
+            page.position = PageOrdering.append(
+                to: pages.filter { $0.course?.id == page.course?.id }.map(\.position))
             try? context.save()
             openedPage = page
         } label: {
@@ -309,6 +330,71 @@ struct LibraryView: View {
         #endif
     }
 
+    #if os(iOS)
+    /// Une image deposee devient une page a part entiere, a son rang.
+    private func adoptPhoto(_ item: PhotosPickerItem, at position: Double) async {
+        defer { pickedPhoto = nil; photoPosition = nil }
+        guard let raw = try? await item.loadTransferable(type: Data.self),
+              let source = UIImage(data: raw) else { return }
+        let maxSide: CGFloat = 2_000
+        let scale = min(1, maxSide / max(source.size.width, source.size.height))
+        let size = CGSize(width: source.size.width * scale, height: source.size.height * scale)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let reduced = UIGraphicsImageRenderer(size: size, format: format).image { context in
+            context.cgContext.interpolationQuality = .high
+            source.draw(in: CGRect(origin: .zero, size: size))
+        }
+        let page = Page(createdAt: .now)
+        page.course = selectedCourse
+        page.position = position
+        page.photo = reduced.jpegData(compressionQuality: 0.8)
+        context.insert(page)
+        try? context.save()
+    }
+    #endif
+
+    /// Le cahier, dans l'ordre voulu.
+    private func ordered(for course: Course) -> [Page] {
+        pages.filter { $0.course?.id == course.id }
+            .sorted { $0.position == $1.position ? $0.createdAt < $1.createdAt : $0.position < $1.position }
+    }
+
+    #if os(iOS)
+    private func move(_ page: Page, to target: Int, in course: Course) {
+        var list = ordered(for: course)
+        guard let from = list.firstIndex(where: { $0.id == page.id }),
+              list.indices.contains(target) else { return }
+        list.remove(at: from)
+        list.insert(page, at: target)
+        // On renumerote la sequence entiere : plus simple a relire qu'un
+        // calcul de milieu, et un cahier fait quelques dizaines de pages.
+        let fresh = PageOrdering.renumbered(count: list.count)
+        for (rank, item) in list.enumerated() { item.position = fresh[rank] }
+        try? context.save()
+    }
+
+    private func insert(_ kind: NotebookList.Kind, at position: Double, in course: Course) {
+        let list = ordered(for: course)
+        let after = list.last(where: { $0.position < position })?.position
+        let before = list.first(where: { $0.position > position })?.position
+        switch kind {
+        case .handwritten:
+            let page = Page(createdAt: .now)
+            page.course = course
+            page.position = position
+            context.insert(page)
+            try? context.save()
+            openedPage = page
+        case .pdf:
+            insertionBounds = (after, before)
+            isPickingPDF = true
+        case .image:
+            photoPosition = position
+        }
+    }
+    #endif
+
     /// Toutes les pages du cahier affiche : ici on ne regroupe PAS les diapos,
     /// on veut le document entier.
     private var exportablePages: [Page] {
@@ -357,6 +443,25 @@ struct LibraryView: View {
     @ViewBuilder private var grid: some View {
         if !query.isEmpty {
             searchResults
+        } else if let course = selectedCourse {
+            #if os(iOS)
+            NotebookList(
+                pages: ordered(for: course),
+                onOpen: { openedPage = $0 },
+                onDelete: { pageToDelete = $0 },
+                onMove: { page, target in move(page, to: target, in: course) },
+                onInsert: { kind, position in insert(kind, at: position, in: course) }
+            )
+            #else
+            // Le Mac n'a ni stylet ni selecteur de photos : il consulte.
+            NotebookList(
+                pages: ordered(for: course),
+                onOpen: { openedPage = $0 },
+                onDelete: { pageToDelete = $0 },
+                onMove: { _, _ in },
+                onInsert: { _, _ in }
+            )
+            #endif
         } else if visiblePages.isEmpty {
             EmptyState(title: "Aucune page", message: "Créez la première page de ce cahier.")
         } else {

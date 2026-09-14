@@ -559,6 +559,8 @@ struct DayView: View {
             page.course = slot.course
             page.sessionEnd = slot.end
         }
+        page.position = PageOrdering.append(
+            to: pages.filter { $0.course?.id == page.course?.id }.map(\.position))
         try? context.save()
         onOpenPage(page)
     }

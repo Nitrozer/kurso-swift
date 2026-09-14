@@ -151,3 +151,43 @@ struct DottedPaper: View {
         .background(K.paperAlt)
     }
 }
+
+/// L'apercu d'une page : son ecriture, sa photo, ou le papier nu.
+///
+/// Partage entre la planche des cahiers et la liste ordonnee d'un cahier :
+/// deux apercus differents pour la meme page seraient deroutants.
+struct PagePreview: View {
+    let page: Page
+
+    var body: some View {
+        ZStack {
+            DottedPaper()
+            if let image = photo {
+                image.resizable().scaledToFill()
+            } else if let image = ink {
+                image.resizable().scaledToFit().padding(5)
+            }
+        }
+        .clipped()
+    }
+
+    private var photo: Image? {
+        #if canImport(UIKit)
+        guard let data = page.photo, let ui = UIImage(data: data) else { return nil }
+        return Image(uiImage: ui)
+        #else
+        return nil
+        #endif
+    }
+
+    private var ink: Image? {
+        guard let data = page.drawing, let drawing = try? PKDrawing(data: data),
+              !drawing.bounds.isEmpty else { return nil }
+        let rendered = drawing.image(from: drawing.bounds, scale: 1)
+        #if canImport(UIKit)
+        return Image(uiImage: rendered)
+        #else
+        return Image(nsImage: rendered)
+        #endif
+    }
+}

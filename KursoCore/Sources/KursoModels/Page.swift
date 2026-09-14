@@ -9,6 +9,9 @@ import SwiftData
     public var title: String = ""
     /// Si true, ne plus jamais l'ecraser (§4).
     public var titleWasEdited: Bool = false
+    /// Rang dans son cahier. L'etudiant decide de l'ordre DANS une matiere :
+    /// une page ecrite, deux diapos, une photo, puis la suite du cours.
+    public var position: Double = 0
     /// Photo posee en fond de page. Hors de la base : une image n'a rien a
     /// faire dans un enregistrement SwiftData (§1).
     @Attribute(.externalStorage) public var photo: Data?
