@@ -87,9 +87,12 @@ enum TimetableImporter {
         for slot in (try? context.fetch(FetchDescriptor<TimeSlot>())) ?? [] { context.delete(slot) }
         for old in (try? context.fetch(FetchDescriptor<Timetable>())) ?? [] { context.delete(old) }
 
-        for proposal in accepted {
+        for (rank, proposal) in accepted.enumerated() {
             let name = proposal.name.trimmingCharacters(in: .whitespaces)
-            let course = byName[name] ?? Course(name: name)
+            // Une couleur par matiere : sans ca tous les cahiers sortaient bleus.
+            let course = byName[name] ?? Course(
+                name: name,
+                colorToken: CourseColor.forIndex(existing.count + rank).token)
             course.icsUID = proposal.group.uids.first
             course.teacher = proposal.group.teacher
             if byName[name] == nil {

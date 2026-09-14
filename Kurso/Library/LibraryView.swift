@@ -24,7 +24,11 @@ struct LibraryView: View {
     @Query private var assets: [PDFAsset]
     @Query(sort: \Page.createdAt, order: .reverse) private var pages: [Page]
 
-    @State private var selection: CahierSelection = .allPages
+    /// Le cahier ouvert. Nil : on regarde la planche des cahiers.
+    @State private var openedCourse: Course?
+    /// Les pages sans matiere, ouvertes comme un cahier a part.
+    @State private var showsLoose = false
+    @State private var customising: Course?
     @State private var openedPage: Page?
     @State private var query = ""
     @State private var isImporting = false
@@ -48,7 +52,7 @@ struct LibraryView: View {
                 #if os(iOS)
                 if ProcessInfo.processInfo.arguments.contains("-selectFirstCourse"),
                    let first = courses.first {
-                    selection = .course(first.id)
+                    openedCourse = first
                 }
                 if ProcessInfo.processInfo.arguments.contains("-simulatePicker") {
                     pendingPDF = PickedPDF(url: URL(filePath: "/tmp/Cours de maths.pdf"))
@@ -100,9 +104,26 @@ struct LibraryView: View {
     private var library: some View {
         VStack(spacing: 0) {
             header
-            toolbar
-            if courses.isEmpty { importInvite }
-            grid
+            if !query.isEmpty {
+                searchResults
+            } else if isInsideCahier {
+                cahierInterior
+            } else {
+                if courses.isEmpty { importInvite }
+                CahiersGrid(
+                    courses: courses,
+                    pageCount: { course in pages.filter { $0.course?.id == course.id }.count },
+                    looseCount: pages.filter { $0.course == nil }.count,
+                    onOpen: { course in
+                        openedCourse = course
+                        showsLoose = (course == nil)
+                    },
+                    onCustomise: { customising = $0 }
+                )
+            }
+        }
+        .sheet(item: $customising) { course in
+            CahierSettings(course: course) { customising = nil }
         }
         .sheet(isPresented: $isImporting) {
             TimetableOnboardingView()
@@ -184,13 +205,28 @@ struct LibraryView: View {
 
     private var header: some View {
         HStack(alignment: .bottom, spacing: 16) {
+            if isInsideCahier {
+                Button {
+                    openedCourse = nil
+                    showsLoose = false
+                } label: {
+                    ChevronGlyph()
+                        .stroke(K.ink, style: StrokeStyle(lineWidth: 2.6, lineCap: .round, lineJoin: .round))
+                        .frame(width: 13, height: 13)
+                        .frame(width: 34, height: 34)
+                        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .strokeBorder(K.ink, lineWidth: 2.5))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Revenir aux cahiers")
+            }
             VStack(alignment: .leading, spacing: 3) {
                 MetaText(headerMeta, size: 10.5)
-                DisplayText("Mes pages", size: 30)
+                DisplayText(headerTitle, size: 30)
             }
             Spacer(minLength: 0)
             searchField
-            newPageButton
+            if isInsideCahier { exportButton } else { importButton }
         }
         .padding(.horizontal, 28)
         .padding(.top, 22)
@@ -200,10 +236,18 @@ struct LibraryView: View {
         }
     }
 
+    private var headerTitle: String {
+        guard isInsideCahier else { return "Mes cahiers" }
+        return openedCourse?.name ?? "Sans matière"
+    }
+
     private var headerMeta: String {
-        let name = selectedCourse?.name ?? "Toutes les matières"
+        guard isInsideCahier else {
+            let n = courses.count
+            return "\(n) cahier\(n > 1 ? "s" : "")".uppercased()
+        }
         let count = visiblePages.count
-        return "\(name) · \(count) page\(count > 1 ? "s" : "")"
+        return "\(count) page\(count > 1 ? "s" : "")".uppercased()
     }
 
     /// « Chercher dans l'ecriture » : la requete porte sur le texte reconnu,
@@ -265,36 +309,6 @@ struct LibraryView: View {
 
     /// Filtres a gauche, actions de rangement a droite : la ligne du haut
     /// garde la seule action qu'on vient chercher, ecrire.
-    private var toolbar: some View {
-        HStack(spacing: 12) {
-            if courses.isEmpty {
-                Spacer(minLength: 0)
-            } else {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 9) {
-                        chip("Toutes", isActive: selection == .allPages) { selection = .allPages }
-                        ForEach(courses) { course in
-                            chip(course.name, isActive: selection == .course(course.id)) {
-                                selection = .course(course.id)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 28)
-                    .padding(.vertical, 2)
-                }
-                .scrollIndicators(.hidden)
-            }
-            HStack(spacing: 9) {
-                exportButton
-                importButton
-                pdfButton
-            }
-            .padding(.trailing, 28)
-            .padding(.leading, courses.isEmpty ? 28 : 0)
-        }
-        .padding(.vertical, 12)
-    }
-
     private func chip(_ label: String, isActive: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
@@ -361,8 +375,8 @@ struct LibraryView: View {
     }
 
     #if os(iOS)
-    private func move(_ page: Page, to target: Int, in course: Course) {
-        var list = ordered(for: course)
+    private func move(_ page: Page, to target: Int) {
+        var list = orderedCurrent
         guard let from = list.firstIndex(where: { $0.id == page.id }),
               list.indices.contains(target) else { return }
         list.remove(at: from)
@@ -374,8 +388,8 @@ struct LibraryView: View {
         try? context.save()
     }
 
-    private func insert(_ kind: NotebookList.Kind, at position: Double, in course: Course) {
-        let list = ordered(for: course)
+    private func insert(_ kind: NotebookList.Kind, at position: Double, in course: Course?) {
+        let list = orderedCurrent
         let after = list.last(where: { $0.position < position })?.position
         let before = list.first(where: { $0.position > position })?.position
         switch kind {
@@ -440,52 +454,95 @@ struct LibraryView: View {
 
     // MARK: Grille de pages
 
+    /// L'interieur d'un cahier : la barre d'ajout, puis la sequence.
+    private var cahierInterior: some View {
+        HStack(spacing: 0) {
+            addSidebar
+            Rectangle().fill(K.ink.opacity(0.1)).frame(width: 1)
+            grid
+        }
+    }
+
+    /// La barre de gauche : de quoi composer son cahier de cours.
+    @ViewBuilder private var addSidebar: some View {
+        #if os(iOS)
+        VStack(alignment: .leading, spacing: 9) {
+            MetaText("AJOUTER", size: 9.5)
+                .padding(.bottom, 2)
+            sidebarButton("Page manuscrite", .handwritten)
+            sidebarButton("Pages d'un PDF", .pdf)
+            sidebarButton("Une image", .image)
+            Spacer(minLength: 0)
+            if let course = openedCourse {
+                Button { customising = course } label: {
+                    HStack(spacing: 8) {
+                        Circle().fill(K.cahier(CourseColor.named(course.colorToken)))
+                            .frame(width: 14, height: 14)
+                            .overlay(Circle().strokeBorder(K.ink, lineWidth: 2))
+                        Text("Personnaliser")
+                            .font(KFont.body(12, weight: .extraBold))
+                            .foregroundStyle(K.ink)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(16)
+        .frame(width: 186, alignment: .leading)
+        .frame(maxHeight: .infinity, alignment: .top)
+        #endif
+    }
+
+    #if os(iOS)
+    private func sidebarButton(_ title: String, _ kind: NotebookList.Kind) -> some View {
+        Button {
+            let list = orderedCurrent
+            insert(kind, at: PageOrdering.append(to: list.map(\.position)), in: openedCourse)
+        } label: {
+            HStack(spacing: 8) {
+                Glyph(kind: .plus, size: 12)
+                Text(title)
+                    .font(KFont.body(12.5, weight: .extraBold))
+                    .foregroundStyle(K.ink)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .sticker(fill: K.paperAlt, radius: 12)
+        }
+        .buttonStyle(.plain)
+    }
+    #endif
+
+    private var orderedCurrent: [Page] {
+        if let course = openedCourse { return ordered(for: course) }
+        return pages.filter { $0.course == nil }
+            .sorted { $0.position == $1.position ? $0.createdAt < $1.createdAt : $0.position < $1.position }
+    }
+
     @ViewBuilder private var grid: some View {
-        if !query.isEmpty {
-            searchResults
-        } else if let course = selectedCourse {
+        if orderedCurrent.isEmpty {
+            EmptyState(title: "Cahier vide",
+                       message: "Ajoute une page, un PDF ou une image depuis la barre de gauche.")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
             #if os(iOS)
             NotebookList(
-                pages: ordered(for: course),
+                pages: orderedCurrent,
                 onOpen: { openedPage = $0 },
                 onDelete: { pageToDelete = $0 },
-                onMove: { page, target in move(page, to: target, in: course) },
-                onInsert: { kind, position in insert(kind, at: position, in: course) }
+                onMove: { page, target in move(page, to: target) },
+                onInsert: { kind, position in insert(kind, at: position, in: openedCourse) }
             )
             #else
-            // Le Mac n'a ni stylet ni selecteur de photos : il consulte.
             NotebookList(
-                pages: ordered(for: course),
+                pages: orderedCurrent,
                 onOpen: { openedPage = $0 },
                 onDelete: { pageToDelete = $0 },
                 onMove: { _, _ in },
                 onInsert: { _, _ in }
             )
             #endif
-        } else if visiblePages.isEmpty {
-            EmptyState(title: "Aucune page", message: "Créez la première page de ce cahier.")
-        } else {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 22) {
-                    ForEach(days, id: \.start) { day in
-                        VStack(alignment: .leading, spacing: 11) {
-                            MetaText(day.start.formatted(.dateTime.weekday(.wide).day().month(.wide)))
-                                .padding(.horizontal, 28)
-                            LazyVGrid(columns: columns, spacing: 16) {
-                                ForEach(day.items) { page in
-                                    PageCard(page: page,
-                                             slideCount: slideCount(of: page),
-                                             action: { openedPage = page },
-                                             onDelete: { pageToDelete = page })
-                                }
-                            }
-                            .padding(.horizontal, 28)
-                        }
-                    }
-                }
-                .padding(.vertical, 20)
-            }
-            .scrollIndicators(.hidden)
         }
     }
 
@@ -537,10 +594,8 @@ struct LibraryView: View {
         pageToDelete = nil
     }
 
-    private var selectedCourse: Course? {
-        guard case .course(let id) = selection else { return nil }
-        return courses.first { $0.id == id }
-    }
+    private var selectedCourse: Course? { openedCourse }
+    private var isInsideCahier: Bool { openedCourse != nil || showsLoose }
 
     private var visiblePages: [Page] {
         let byCourse = selectedCourse.map { course in

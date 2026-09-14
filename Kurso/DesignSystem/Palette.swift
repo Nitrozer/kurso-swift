@@ -35,4 +35,16 @@ enum K {
     static let doneFill    = Color(token: DesignTokens.Palette.doneFill)
     static let pendingLine = Color(token: DesignTokens.Palette.pendingLine)
     static let hairline    = Color(token: DesignTokens.Palette.hairline)
+
+    /// La couleur d'un cahier. Les cinq teintes de la direction artistique,
+    /// pas une palette libre : un cahier fuchsia jurerait avec tout le reste.
+    static func cahier(_ color: CourseColor) -> Color {
+        switch color {
+        case .blue:   brand
+        case .green:  success
+        case .pink:   eraser
+        case .yellow: reward
+        case .grey:   inkSoft
+        }
+    }
 }
