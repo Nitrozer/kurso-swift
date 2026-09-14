@@ -22,6 +22,8 @@ struct PageEditorView: View {
     @State private var loadFailed = false
     @State private var recognitionTask: Task<Void, Never>?
     @State private var isMasking = false
+    /// Le volet des cartes capturees. On l'enleve pour ecrire large.
+    @State private var marginShown = true
     @State private var isCapturing = false
     @State private var pendingCapture: PKDrawing?
     /// La diapo rasterisee, passee au fond du canevas pour qu'elle defile et
@@ -43,6 +45,8 @@ struct PageEditorView: View {
     @State private var pendingPDF: PickedPDF?
     @State private var isAdjustingPhoto = false
     @State private var isPickingPhotoForPage = false
+    /// Le volet des cartes capturees. On l'enleve pour ecrire large.
+    @State private var exportProgress: Double?
     @State private var exported: ExportedFile?
     #endif
     #if os(iOS)
@@ -139,7 +143,10 @@ struct PageEditorView: View {
                     )
                 }
             }
-            TaskMargin(page: page)
+            if marginShown {
+                TaskMargin(page: page)
+                    .transition(.move(edge: .trailing))
+            }
             }
             #else
             // Sur Mac : le manuscrit se relit, le markdown s'ecrit. PKCanvasView
@@ -233,6 +240,16 @@ struct PageEditorView: View {
             )
         }
         #endif
+        .animation(.snappy(duration: 0.28), value: marginShown)
+        #if os(iOS)
+        .onChange(of: pickedPhoto) { _, item in
+            guard let item else { return }
+            Task { await adopt(item) }
+        }
+        #endif
+        #if os(iOS)
+        .overlay { ExportProgress(value: exportProgress) }
+        #endif
         .onDisappear {
             persist()
         }
@@ -282,6 +299,7 @@ struct PageEditorView: View {
             slideNav
             Spacer()
             #if os(iOS)
+            marginToggle
             pageMenu
             #endif
             if loadFailed {
@@ -376,25 +394,6 @@ struct PageEditorView: View {
                 .strokeBorder(K.ink, lineWidth: 2))
     }
 
-    /// Un fond existe : diapo de PDF, ou photo posee par l'etudiant. Les deux
-    /// se masquent et s'annotent de la meme facon.
-    private var hasBackdrop: Bool { page.pdfAssetID != nil || page.photo != nil }
-
-    #if os(iOS)
-    @ViewBuilder private var adjustPhotoButton: some View {
-        if page.photo != nil {
-            Button { isAdjustingPhoto.toggle() } label: {
-                Text(isAdjustingPhoto ? "Terminer" : "Régler l'image")
-                    .font(KFont.body(12, weight: .extraBold))
-                    .foregroundStyle(isAdjustingPhoto ? K.paperAlt : K.ink)
-                    .padding(.horizontal, 13).padding(.vertical, 7)
-                    .background(isAdjustingPhoto ? K.brand : .clear, in: Capsule())
-                    .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
     /// Le cadre de l'image, tel qu'il tombe a l'ecran.
     private func photoFrameOnScreen(_ source: CGImage) -> CGRect {
         PaperBackdrop.placement(
@@ -417,6 +416,22 @@ struct PageEditorView: View {
                                 width: rect.width / pageRect.width,
                                 height: rect.height / pageRect.height)
         try? context.save()
+    }
+
+    #if os(iOS)
+    /// Montre ou cache le volet de droite.
+    private var marginToggle: some View {
+        Button { marginShown.toggle() } label: {
+            ChevronGlyph()
+                .stroke(K.ink, style: StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round))
+                .frame(width: 10, height: 10)
+                .rotationEffect(.degrees(marginShown ? 180 : 0))
+                .frame(width: 32, height: 30)
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(K.ink, lineWidth: 2.5))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(marginShown ? "Cacher les cartes" : "Montrer les cartes")
     }
 
     /// Les actions de la page, rangees : l'en-tete ne peut pas porter six
@@ -447,58 +462,14 @@ struct PageEditorView: View {
     private func exportCurrent() {
         PDFAssetLookup.remember(assets)
         let siblings = slideSiblings
-        exported = PageExporter.write(siblings.isEmpty ? [page] : siblings,
-                                      fallbackName: page.title.isEmpty ? "Page Kurso" : page.title)
-            .map(ExportedFile.init)
-    }
-
-    /// Deposer des diapos dans le meme cahier que cette note.
-    ///
-    /// Un cahier melange l'ecrit et le polycopie : c'est comme ca qu'on
-    /// travaille en cours, pas en separant les deux.
-    private var addPDFButton: some View {
-        Button { isPickingPDF = true } label: {
-            Text("Ajouter un PDF")
-                .font(KFont.body(12, weight: .extraBold))
-                .foregroundStyle(K.ink)
-                .padding(.horizontal, 13).padding(.vertical, 7)
-                .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var exportButton: some View {
-        Button {
-            PDFAssetLookup.remember(assets)
-            // Un PDF s'exporte en entier : une diapo isolee ne veut rien dire.
-            let siblings = slideSiblings
-            exported = PageExporter.write(siblings.isEmpty ? [page] : siblings,
-                                          fallbackName: page.title.isEmpty ? "Page Kurso" : page.title)
-                .map(ExportedFile.init)
-        } label: {
-            Text("Exporter")
-                .font(KFont.body(12, weight: .extraBold))
-                .foregroundStyle(K.ink)
-                .padding(.horizontal, 13).padding(.vertical, 7)
-                .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
-        }
-        .buttonStyle(.plain)
-    }
-
-    @ViewBuilder private var photoButton: some View {
-        if page.pdfAssetID == nil {
-            PhotosPicker(selection: $pickedPhoto, matching: .images, photoLibrary: .shared()) {
-                Text(page.photo == nil ? "Ajouter une photo" : "Changer la photo")
-                    .font(KFont.body(12, weight: .extraBold))
-                    .foregroundStyle(K.ink)
-                    .padding(.horizontal, 13).padding(.vertical, 7)
-                    .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
-            }
-            .buttonStyle(.plain)
-            .onChange(of: pickedPhoto) { _, item in
-                guard let item else { return }
-                Task { await adopt(item) }
-            }
+        Task {
+            exportProgress = 0
+            let url = await PageExporter.write(
+                siblings.isEmpty ? [page] : siblings,
+                fallbackName: page.title.isEmpty ? "Page Kurso" : page.title
+            ) { value in exportProgress = value }
+            exportProgress = nil
+            exported = url.map(ExportedFile.init)
         }
     }
 
@@ -597,6 +568,10 @@ struct PageEditorView: View {
                                crop: crop, pixelWidth: pixelWidth)
     }
     #endif
+
+    /// Un fond existe : diapo de PDF, ou photo posee par l'etudiant. Les deux
+    /// se masquent et s'annotent de la meme facon.
+    private var hasBackdrop: Bool { page.pdfAssetID != nil || page.photo != nil }
 
     /// Ranger une diapo range TOUT le PDF.
     ///

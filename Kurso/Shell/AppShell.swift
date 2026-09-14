@@ -19,13 +19,22 @@ struct AppShell: View {
         return .notebooks
     }()
 
+    /// Le rail se replie : sur un iPad en portrait, cent points de moins
+    /// changent tout pour ecrire.
+    @State private var railShown = true
+
     var body: some View {
         HStack(spacing: 0) {
-            RailView(tab: $tab)
+            if railShown {
+                RailView(tab: $tab)
+                    .transition(.move(edge: .leading))
+            }
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(K.paper)
+                .overlay(alignment: .bottomLeading) { railToggle }
         }
+        .animation(.snappy(duration: 0.28), value: railShown)
         // Le rail descend jusqu'en bas mais pas sous la barre d'etat : l'heure
         // du systeme est ecrite en sombre et deviendrait illisible sur le
         // graphite. Le prototype n'a pas ce probleme, c'est une maquette sans
@@ -33,6 +42,24 @@ struct AppShell: View {
         .padding(.top, 1)
         .background(K.paper)
         .ignoresSafeArea(edges: .bottom)
+    }
+
+    /// Le bouton qui replie et deplie le rail.
+    private var railToggle: some View {
+        Button { railShown.toggle() } label: {
+            ChevronGlyph()
+                .stroke(K.ink, style: StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round))
+                .frame(width: 10, height: 10)
+                .rotationEffect(.degrees(railShown ? 0 : 180))
+                .frame(width: 26, height: 26)
+                .background(K.paperAlt, in: Circle())
+                .overlay(Circle().strokeBorder(K.ink, lineWidth: 2))
+        }
+        .buttonStyle(.plain)
+        // En bas : en haut il chevauchait l'en-tete du panneau des pages.
+        .padding(.leading, 8)
+        .padding(.bottom, 14)
+        .accessibilityLabel(railShown ? "Replier le menu" : "Déplier le menu")
     }
 
     @ViewBuilder private var content: some View {

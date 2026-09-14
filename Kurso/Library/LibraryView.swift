@@ -37,6 +37,7 @@ struct LibraryView: View {
     #if os(iOS)
     @State private var exported: ExportedFile?
     @State private var pendingPDF: PickedPDF?
+    @State private var exportProgress: Double?
     /// Ou deposer les diapos qu'on est en train de choisir.
     @State private var insertionBounds: (after: Double?, before: Double?) = (nil, nil)
     @State private var pickedPhoto: PhotosPickerItem?
@@ -47,6 +48,10 @@ struct LibraryView: View {
     var body: some View {
         content
             .task {
+                #if os(iOS)
+                // Les vignettes ont besoin de retrouver le fichier d'un PDF.
+                PDFAssetLookup.remember(assets)
+                #endif
                 #if DEBUG
                 // Rejoue un import de PDF, pour voir ce qu'il cree vraiment.
                 #if os(iOS)
@@ -60,7 +65,7 @@ struct LibraryView: View {
                 }
                 if ProcessInfo.processInfo.arguments.contains("-simulateExport") {
                     PDFAssetLookup.remember(assets)
-                    if let url = PageExporter.write(exportablePages, fallbackName: "Essai") {
+                    if let url = await PageExporter.write(exportablePages, fallbackName: "Essai") {
                         let size = (try? Data(contentsOf: url).count) ?? 0
                         print("[EXPORT] \(exportablePages.count) pages → \(url.path) (\(size / 1024) Ko)")
                     } else {
@@ -70,7 +75,8 @@ struct LibraryView: View {
                 #endif
                 if ProcessInfo.processInfo.arguments.contains("-simulateImport") {
                     let source = URL(filePath: "/tmp/Cours de maths.pdf")
-                    let created = try? PDFImporter.importFile(at: source, course: nil, context: context)
+                    let created = try? PDFImporter.importFile(
+                        at: source, course: courses.first, context: context)
                     print("[IMPORT] pages creees = \(created?.count ?? -1)")
                     for p in created ?? [] {
                         print("[IMPORT]   titre=\(p.title.isEmpty ? "(VIDE)" : p.title) diapo=\(p.pdfPageIndex.map(String.init) ?? "-")")
@@ -187,6 +193,9 @@ struct LibraryView: View {
         .sheet(item: $customising) { course in
             CahierSettings(course: course) { customising = nil }
         }
+        #if os(iOS)
+        .overlay { ExportProgress(value: exportProgress) }
+        #endif
         .sheet(isPresented: $isImporting) {
             TimetableOnboardingView()
         }
@@ -392,8 +401,7 @@ struct LibraryView: View {
             Button {
                 PDFAssetLookup.remember(assets)
                 let name = selectedCourse?.name ?? "Mes pages"
-                exported = PageExporter.write(exportablePages, fallbackName: name)
-                    .map(ExportedFile.init)
+                Task { await runExport(exportablePages, named: name) }
             } label: {
                 Text("Exporter")
                     .font(KFont.body(12, weight: .extraBold))
@@ -407,6 +415,17 @@ struct LibraryView: View {
     }
 
     #if os(iOS)
+    /// L'export rend compte de son avancement : un cahier epais prend du temps
+    /// et l'interface ne doit pas rester muette.
+    private func runExport(_ list: [Page], named: String) async {
+        exportProgress = 0
+        let url = await PageExporter.write(list, fallbackName: named) { value in
+            exportProgress = value
+        }
+        exportProgress = nil
+        exported = url.map(ExportedFile.init)
+    }
+
     /// Une image deposee devient une page a part entiere, a son rang.
     private func adoptPhoto(_ item: PhotosPickerItem, at position: Double) async {
         defer { pickedPhoto = nil; photoPosition = nil }

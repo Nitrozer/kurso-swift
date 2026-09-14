@@ -80,18 +80,7 @@ struct TimetableOnboardingView: View {
                         .foregroundStyle(K.ink.opacity(0.75))
 
                     ForEach(courses) { course in
-                        HStack(spacing: 13) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(course.name)
-                                    .font(KFont.body(14, weight: .extraBold))
-                                    .foregroundStyle(K.ink)
-                                MetaText(courseSubtitle(course))
-                            }
-                            Spacer(minLength: 0)
-                        }
-                        .padding(14)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .sticker(fill: K.paperAlt, radius: 14)
+                        courseRow(course)
                     }
                 }
                 .padding(.horizontal, 28)
@@ -100,7 +89,7 @@ struct TimetableOnboardingView: View {
             .scrollIndicators(.hidden)
 
             HStack(spacing: 12) {
-                Button("Fermer") { close() }
+                Button("Fermer") { try? context.save(); close() }
                     .buttonStyle(StickerButtonStyle(kind: .secondary))
                 Button("Remplacer") {
                     url = timetables.first?.url ?? ""
@@ -111,6 +100,39 @@ struct TimetableOnboardingView: View {
             .padding(.horizontal, 28)
             .padding(.bottom, 22)
         }
+    }
+
+    /// Un intitule d'ENT se corrige apres coup : « CM ALGO S3 » n'est pas un
+    /// nom de matiere, et on ne s'en apercoit souvent qu'a l'usage.
+    @ViewBuilder private func courseRow(_ course: Course) -> some View {
+        @Bindable var bound = course
+        HStack(spacing: 13) {
+            Menu {
+                ForEach(CourseColor.allCases, id: \.self) { color in
+                    Button(color.label) { bound.colorToken = color.token }
+                }
+            } label: {
+                Circle()
+                    .fill(K.cahier(CourseColor.named(course.colorToken)))
+                    .frame(width: 22, height: 22)
+                    .overlay(Circle().strokeBorder(K.ink, lineWidth: 2.5))
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+
+            VStack(alignment: .leading, spacing: 3) {
+                TextField("Nom de la matière", text: $bound.name)
+                    .textFieldStyle(.plain)
+                    .font(KFont.body(14, weight: .extraBold))
+                    .foregroundStyle(K.ink)
+                    .onSubmit { try? context.save() }
+                MetaText(courseSubtitle(course))
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .sticker(fill: K.paperAlt, radius: 14)
     }
 
     private var summaryLine: String {

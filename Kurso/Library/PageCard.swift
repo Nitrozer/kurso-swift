@@ -1,5 +1,6 @@
 import SwiftUI
 import PencilKit
+import SwiftData
 import KursoCore
 import KursoModels
 
@@ -159,17 +160,49 @@ struct DottedPaper: View {
 struct PagePreview: View {
     let page: Page
 
+    #if os(iOS)
+    @State private var slide: CGImage?
+    /// On interroge la base plutot qu'un cache : un PDF importe a l'instant
+    /// n'y serait pas encore, et sa vignette resterait blanche.
+    @Query private var assets: [PDFAsset]
+    #endif
+
     var body: some View {
         ZStack {
             DottedPaper()
+            #if os(iOS)
+            // La diapo d'un PDF : sans elle, toutes les pages importees
+            // s'affichaient blanches dans le panneau.
+            if let slide {
+                Image(decorative: slide, scale: 1).resizable().scaledToFit()
+            }
+            #endif
             if let image = photo {
                 image.resizable().scaledToFill()
-            } else if let image = ink {
+            }
+            if let image = ink {
                 image.resizable().scaledToFit().padding(5)
             }
         }
         .clipped()
+        #if os(iOS)
+        .task(id: page.id) { await loadSlide() }
+        #endif
     }
+
+    #if os(iOS)
+    private func loadSlide() async {
+        guard slide == nil,
+              let assetID = page.pdfAssetID,
+              let index = page.pdfPageIndex,
+              let fileName = assets.first(where: { $0.id == assetID })?.fileName
+        else { return }
+        let rendered = await Task.detached(priority: .utility) {
+            PDFStore.render(fileName: fileName, pageIndex: index, width: 240)
+        }.value
+        slide = rendered
+    }
+    #endif
 
     private var photo: Image? {
         #if canImport(UIKit)

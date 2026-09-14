@@ -12,14 +12,15 @@ enum PageExporter {
 
     /// Un fichier PDF pour ces pages, dans l'ordre donne.
     @MainActor
-    static func pdf(_ pages: [Page]) -> Data {
+    static func pdf(_ pages: [Page], backdrops: [UUID: CGImage] = [:]) -> Data {
         let full = CGRect(origin: .zero, size: PaperBackdrop.pageSize)
         let renderer = UIGraphicsPDFRenderer(bounds: full)
         return renderer.pdfData { context in
             for page in pages {
                 let bounds = trimmed(page)
                 context.beginPage(withBounds: bounds, pageInfo: [:])
-                draw(page, in: bounds, context: context.cgContext)
+                draw(page, in: bounds, context: context.cgContext,
+                     image: backdrops[page.id] ?? backdrop(for: page))
             }
         }
     }
@@ -62,13 +63,28 @@ enum PageExporter {
     }
 
     /// Ecrit le PDF dans un fichier temporaire, pret a partager.
+    ///
+    /// Le rendu des diapos est la partie lente : on le fait page par page en
+    /// rendant la main entre chacune, sinon un cahier epais gelait l'interface
+    /// sans rien dire.
     @MainActor
-    static func write(_ pages: [Page], fallbackName: String) -> URL? {
+    static func write(_ pages: [Page],
+                      fallbackName: String,
+                      progress: @escaping @MainActor (Double) -> Void = { _ in }) async -> URL? {
         guard !pages.isEmpty else { return nil }
+
+        var backdrops: [UUID: CGImage] = [:]
+        for (rank, page) in pages.enumerated() {
+            if let image = backdrop(for: page) { backdrops[page.id] = image }
+            progress(Double(rank + 1) / Double(pages.count + 1))
+            await Task.yield()
+        }
+
         let url = FileManager.default.temporaryDirectory
             .appending(path: fileName(for: pages, fallback: fallbackName))
         do {
-            try pdf(pages).write(to: url, options: .atomic)
+            try pdf(pages, backdrops: backdrops).write(to: url, options: .atomic)
+            progress(1)
             return url
         } catch {
             return nil
@@ -78,11 +94,12 @@ enum PageExporter {
     // MARK: Une page
 
     @MainActor
-    private static func draw(_ page: Page, in bounds: CGRect, context: CGContext) {
+    private static func draw(_ page: Page, in bounds: CGRect, context: CGContext,
+                             image: CGImage?) {
         UIColor.white.setFill()
         context.fill(bounds)
 
-        if let image = backdrop(for: page) {
+        if let image {
             let fitted = PaperBackdrop.fitted(
                 CGSize(width: image.width, height: image.height), into: bounds)
             UIImage(cgImage: image).draw(in: fitted)
