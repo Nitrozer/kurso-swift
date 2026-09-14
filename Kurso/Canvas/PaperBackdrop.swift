@@ -32,10 +32,10 @@ struct PaperBackdrop: View {
     var viewport: Viewport
     var template: PaperTemplate
     var pageSize: CGSize
-    var pdfImage: CGImage?
+    var backdrop: CGImage?
     /// La zone visible, rendue plus finement. L'image de base reste dessous :
     /// une tuile en retard laisse voir une diapo floue, jamais un trou.
-    var pdfTile: Tile?
+    var backdropTile: Tile?
 
     private let lineSpacing: CGFloat = 32
     private let marginX: CGFloat = 96
@@ -58,11 +58,11 @@ struct PaperBackdrop: View {
 
             context.clip(to: Path(page.intersection(bounds)))
 
-            if let pdfImage {
-                let fitted = Self.fitted(CGSize(width: pdfImage.width, height: pdfImage.height),
+            if let backdrop {
+                let fitted = Self.fitted(CGSize(width: backdrop.width, height: backdrop.height),
                                          into: page)
-                context.draw(Image(decorative: pdfImage, scale: 1), in: fitted)
-                if let tile = pdfTile {
+                context.draw(Image(decorative: backdrop, scale: 1), in: fitted)
+                if let tile = backdropTile {
                     let target = CGRect(
                         x: fitted.minX + tile.crop.minX * fitted.width,
                         y: fitted.minY + tile.crop.minY * fitted.height,

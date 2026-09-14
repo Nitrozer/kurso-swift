@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import PhotosUI
 import PencilKit
 import KursoCore
 import KursoModels
@@ -25,14 +26,18 @@ struct PageEditorView: View {
     /// La diapo rasterisee, passee au fond du canevas pour qu'elle defile et
     /// zoome avec l'ecriture — la poser derriere le canevas la laissait
     /// immobile, et le papier la recouvrait.
-    @State private var pdfImage: CGImage?
+    @State private var backdropImage: CGImage?
     /// Zoom et defilement du canevas, dont le fond se sert pour se caler.
     @State private var viewport = PaperBackdrop.Viewport()
     /// La zone visible de la diapo, rendue plus finement en zoomant.
-    @State private var pdfTile: PaperBackdrop.Tile?
+    @State private var backdropTile: PaperBackdrop.Tile?
     @State private var tileTask: Task<Void, Never>?
     @Environment(\.displayScale) private var displayScale
     @FocusState private var titleFocused: Bool
+    #if os(iOS)
+    @State private var pickedPhoto: PhotosPickerItem?
+    @State private var exported: ExportedFile?
+    #endif
     #if os(iOS)
     @State private var canvasHandle = CanvasHandle()
     #endif
@@ -74,8 +79,8 @@ struct PageEditorView: View {
                     template: .ruled,
                     pageSize: CGSize(width: DrawingCanvas.pageWidth,
                                      height: DrawingCanvas.pageHeight),
-                    pdfImage: pdfImage,
-                    pdfTile: pdfTile
+                    backdrop: backdropImage,
+                    backdropTile: backdropTile
                 )
                 DrawingCanvas(
                 drawing: $drawing,
@@ -93,7 +98,7 @@ struct PageEditorView: View {
                         page: page,
                         pageIndex: index,
                         viewport: viewport,
-                        slideImage: pdfImage
+                        slideImage: backdropImage
                     ) { isMasking = false }
                 }
                 if isCapturing {
@@ -162,6 +167,9 @@ struct PageEditorView: View {
             if !masking { canvasHandle.canvas?.becomeFirstResponder() }
         }
         #endif
+        #if os(iOS)
+        .sheet(item: $exported) { ShareSheet(url: $0.url) }
+        #endif
         .onDisappear {
             persist()
         }
@@ -207,6 +215,10 @@ struct PageEditorView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 MetaText(page.createdAt.formatted(.dateTime.weekday(.wide).day().month(.wide)))
             }
+            #if os(iOS)
+            exportButton
+            photoButton
+            #endif
             coursePicker
             slideNav
             Spacer()
@@ -230,7 +242,7 @@ struct PageEditorView: View {
                         .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
                 }
                 .buttonStyle(.plain)
-            } else if page.pdfAssetID != nil {
+            } else if hasBackdrop {
                 Button { isMasking.toggle() } label: {
                     Text(isMasking ? "Terminer" : "Masquer pour réviser")
                         .font(KFont.body(12, weight: .extraBold))
@@ -290,6 +302,66 @@ struct PageEditorView: View {
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(K.ink, lineWidth: 2))
     }
+
+    /// Un fond existe : diapo de PDF, ou photo posee par l'etudiant. Les deux
+    /// se masquent et s'annotent de la meme facon.
+    private var hasBackdrop: Bool { page.pdfAssetID != nil || page.photo != nil }
+
+    #if os(iOS)
+    private var exportButton: some View {
+        Button {
+            PDFAssetLookup.remember(assets)
+            // Un PDF s'exporte en entier : une diapo isolee ne veut rien dire.
+            let siblings = slideSiblings
+            exported = PageExporter.write(siblings.isEmpty ? [page] : siblings,
+                                          fallbackName: page.title.isEmpty ? "Page Kurso" : page.title)
+                .map(ExportedFile.init)
+        } label: {
+            Text("Exporter")
+                .font(KFont.body(12, weight: .extraBold))
+                .foregroundStyle(K.ink)
+                .padding(.horizontal, 13).padding(.vertical, 7)
+                .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder private var photoButton: some View {
+        if page.pdfAssetID == nil {
+            PhotosPicker(selection: $pickedPhoto, matching: .images, photoLibrary: .shared()) {
+                Text(page.photo == nil ? "Ajouter une photo" : "Changer la photo")
+                    .font(KFont.body(12, weight: .extraBold))
+                    .foregroundStyle(K.ink)
+                    .padding(.horizontal, 13).padding(.vertical, 7)
+                    .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
+            }
+            .buttonStyle(.plain)
+            .onChange(of: pickedPhoto) { _, item in
+                guard let item else { return }
+                Task { await adopt(item) }
+            }
+        }
+    }
+
+    /// La photo est reduite avant d'etre gardee : un cliche d'iPhone pese une
+    /// dizaine de megaoctets, et il doit tenir dans l'iCloud de l'etudiant.
+    private func adopt(_ item: PhotosPickerItem) async {
+        guard let raw = try? await item.loadTransferable(type: Data.self),
+              let source = UIImage(data: raw) else { return }
+        let maxSide: CGFloat = 2_000
+        let scale = min(1, maxSide / max(source.size.width, source.size.height))
+        let size = CGSize(width: source.size.width * scale, height: source.size.height * scale)
+        let reduced = UIGraphicsImageRenderer(size: size).image { context in
+            context.cgContext.interpolationQuality = .high
+            source.draw(in: CGRect(origin: .zero, size: size))
+        }
+        page.photo = reduced.jpegData(compressionQuality: 0.8)
+        try? context.save()
+        backdropImage = reduced.cgImage
+        pickedPhoto = nil
+    }
+
+    #endif
 
     /// Ranger une diapo range TOUT le PDF.
     ///
@@ -369,12 +441,12 @@ struct PageEditorView: View {
     /// Jamais la page entiere : a 5x un A4 demanderait pres de 900 Mo. Ne
     /// rendre que le visible garde un cout constant, quel que soit le zoom.
     private func scheduleTile() {
-        guard let base = pdfImage, viewport.size != .zero else { return }
+        guard let base = backdropImage, viewport.size != .zero else { return }
         tileTask?.cancel()
 
         // En dessous de ce seuil, l'image de base est deja plus fine que
         // l'ecran : une tuile n'apporterait rien.
-        guard viewport.zoom > 1.2 else { pdfTile = nil; return }
+        guard viewport.zoom > 1.2 else { backdropTile = nil; return }
 
         let page = CGRect(x: -viewport.offset.x, y: -viewport.offset.y,
                           width: DrawingCanvas.pageWidth * viewport.zoom,
@@ -401,7 +473,7 @@ struct PageEditorView: View {
                 PDFStore.render(fileName: name, pageIndex: index, crop: crop, pixelWidth: pixels)
             }.value
             guard !Task.isCancelled, let rendered else { return }
-            pdfTile = PaperBackdrop.Tile(image: rendered, crop: crop)
+            backdropTile = PaperBackdrop.Tile(image: rendered, crop: crop)
         }
     }
 
@@ -429,6 +501,11 @@ struct PageEditorView: View {
             if page.pdfPageIndex == nil { page.pdfPageIndex = 0 }
         }
         #endif
+        // Une photo posee sur la page tient lieu de fond, comme une diapo.
+        if page.pdfAssetID == nil, let data = page.photo {
+            backdropImage = UIImage(data: data)?.cgImage
+            return
+        }
         guard let fileName = pdfFileName, let index = page_pdfIndex else { return }
         // La largeur est lue ici, sur l'acteur principal, avant de partir en
         // tache detachee.
@@ -436,7 +513,7 @@ struct PageEditorView: View {
         let rendered = await Task.detached(priority: .userInitiated) {
             PDFStore.render(fileName: fileName, pageIndex: index, width: width)
         }.value
-        pdfImage = rendered
+        backdropImage = rendered
     }
     #endif
 

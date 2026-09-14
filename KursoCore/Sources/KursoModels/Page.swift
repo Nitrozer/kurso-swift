@@ -9,6 +9,9 @@ import SwiftData
     public var title: String = ""
     /// Si true, ne plus jamais l'ecraser (§4).
     public var titleWasEdited: Bool = false
+    /// Photo posee en fond de page. Hors de la base : une image n'a rien a
+    /// faire dans un enregistrement SwiftData (§1).
+    @Attribute(.externalStorage) public var photo: Data?
     public var createdAt: Date = Date()
     /// Fin du creneau de cours, si la page est rattachee.
     public var sessionEnd: Date?

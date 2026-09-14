@@ -20,6 +20,7 @@ struct LibraryView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Course.name) private var courses: [Course]
     @Query private var slots: [TimeSlot]
+    @Query private var assets: [PDFAsset]
     @Query(sort: \Page.createdAt, order: .reverse) private var pages: [Page]
 
     @State private var selection: CahierSelection = .allPages
@@ -28,6 +29,9 @@ struct LibraryView: View {
     @State private var isImporting = false
     @State private var isPickingPDF = false
     @State private var pageToDelete: Page?
+    #if os(iOS)
+    @State private var exported: ExportedFile?
+    #endif
     @FocusState private var isSearching: Bool
 
     var body: some View {
@@ -35,6 +39,17 @@ struct LibraryView: View {
             .task {
                 #if DEBUG
                 // Rejoue un import de PDF, pour voir ce qu'il cree vraiment.
+                #if os(iOS)
+                if ProcessInfo.processInfo.arguments.contains("-simulateExport") {
+                    PDFAssetLookup.remember(assets)
+                    if let url = PageExporter.write(exportablePages, fallbackName: "Essai") {
+                        let size = (try? Data(contentsOf: url).count) ?? 0
+                        print("[EXPORT] \(exportablePages.count) pages → \(url.path) (\(size / 1024) Ko)")
+                    } else {
+                        print("[EXPORT] echec")
+                    }
+                }
+                #endif
                 if ProcessInfo.processInfo.arguments.contains("-simulateImport") {
                     let source = URL(filePath: "/tmp/Cours de maths.pdf")
                     let created = try? PDFImporter.importFile(at: source, course: nil, context: context)
@@ -79,6 +94,9 @@ struct LibraryView: View {
         .sheet(isPresented: $isImporting) {
             TimetableOnboardingView()
         }
+        #if os(iOS)
+        .sheet(item: $exported) { ShareSheet(url: $0.url) }
+        #endif
         .confirmationDialog(
             "Supprimer cette page ?",
             isPresented: Binding(get: { pageToDelete != nil }, set: { if !$0 { pageToDelete = nil } }),
@@ -225,6 +243,7 @@ struct LibraryView: View {
                 .scrollIndicators(.hidden)
             }
             HStack(spacing: 9) {
+                exportButton
                 importButton
                 pdfButton
             }
@@ -248,6 +267,39 @@ struct LibraryView: View {
     }
 
     /// Depot d'un polycopie : une page Kurso par diapo.
+    /// Exporte tout ce que la colonne affiche, diapos comprises.
+    @ViewBuilder private var exportButton: some View {
+        #if os(iOS)
+        if !pages.isEmpty {
+            Button {
+                PDFAssetLookup.remember(assets)
+                let name = selectedCourse?.name ?? "Mes pages"
+                exported = PageExporter.write(exportablePages, fallbackName: name)
+                    .map(ExportedFile.init)
+            } label: {
+                Text("Exporter")
+                    .font(KFont.body(12, weight: .extraBold))
+                    .foregroundStyle(K.ink)
+                    .padding(.horizontal, 13).padding(.vertical, 7)
+                    .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
+            }
+            .buttonStyle(.plain)
+        }
+        #endif
+    }
+
+    /// Toutes les pages du cahier affiche : ici on ne regroupe PAS les diapos,
+    /// on veut le document entier.
+    private var exportablePages: [Page] {
+        let ofCourse = selectedCourse.map { course in
+            pages.filter { $0.course?.id == course.id }
+        } ?? pages
+        return ofCourse.sorted {
+            if $0.createdAt != $1.createdAt { return $0.createdAt < $1.createdAt }
+            return ($0.pdfPageIndex ?? 0) < ($1.pdfPageIndex ?? 0)
+        }
+    }
+
     private var pdfButton: some View {
         Button { isPickingPDF = true } label: {
             HStack(spacing: 7) {
