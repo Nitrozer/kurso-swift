@@ -26,6 +26,18 @@ public enum Chest {
         return Shop.Cover.allCases.first { $0.price > 0 && !owned.contains($0.rawValue) }
     }
 
+    /// Le §9 n'autorise que deux gels en reserve.
+    public static let maxFreezes = 2
+
+    /// Un gel de serie par coffre, plafonne a la reserve autorisee.
+    ///
+    /// Un gel ne fait pas progresser plus vite : il evite de perdre une serie,
+    /// il ne fait rien gagner. C'est a ce titre qu'il tient dans un coffre
+    /// sans contredire le §12.
+    public static func freezes(inReserve: Int, chests: Int) -> Int {
+        max(0, min(maxFreezes, inReserve + max(0, chests)) - inReserve)
+    }
+
     /// Les niveaux dont le coffre n'a pas encore ete ouvert.
     ///
     /// On rattrape les niveaux passes : monter de deux d'un coup pendant une

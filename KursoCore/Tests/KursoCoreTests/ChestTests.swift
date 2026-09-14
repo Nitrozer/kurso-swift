@@ -42,6 +42,20 @@ struct ChestTests {
         #expect(Chest.pending(currentLevel: 4, lastOpened: 2) == [3, 4])
     }
 
+    @Test("Un gel de serie par coffre")
+    func oneFreezePerChest() {
+        #expect(Chest.freezes(inReserve: 0, chests: 1) == 1)
+        #expect(Chest.freezes(inReserve: 0, chests: 2) == 2)
+    }
+
+    @Test("Jamais plus de deux gels en reserve")
+    func freezesCapped() {
+        // Le §9 plafonne la reserve a deux : six coffres n'en donnent pas six.
+        #expect(Chest.freezes(inReserve: 0, chests: 6) == 2)
+        #expect(Chest.freezes(inReserve: 1, chests: 6) == 1)
+        #expect(Chest.freezes(inReserve: 2, chests: 6) == 0)
+    }
+
     @Test("Rien a ouvrir quand tout l'a ete")
     func nothingPending() {
         #expect(Chest.pending(currentLevel: 3, lastOpened: 3).isEmpty)

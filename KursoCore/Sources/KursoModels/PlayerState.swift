@@ -31,6 +31,12 @@ import SwiftData
     public var lastStreakDay: Date?
     /// Couvertures de cahier achetees. Uniquement de l'apparence (§9).
     public var ownedCovers: [String] = []
+    /// Secondes d'ecriture totalisees au dernier passage de niveau.
+    ///
+    /// Sans ce repere, la mine ne se retaillait jamais : elle cumulait toutes
+    /// les pages depuis l'installation et restait a 100 % d'usure.
+    public var writingSecondsAtLevel: Int = 0
+
     /// Dernier niveau dont le coffre a ete ouvert. Sans lui, le meme coffre
     /// retomberait a chaque lancement de l'application (§9).
     public var lastChestLevel: Int = 1

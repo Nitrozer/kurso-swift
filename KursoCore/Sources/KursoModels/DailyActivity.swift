@@ -13,6 +13,8 @@ import SwiftData
     public var pagesWritten: Int = 0
     public var cardsReviewed: Int = 0
     public var cardsCaptured: Int = 0
+    /// XP gagnes dans la journee, affiches au passage de niveau.
+    public var xpEarned: Int = 0
     /// Quetes deja encaissees, pour ne pas rendre l'XP deux fois.
     public var claimedQuests: [String] = []
 

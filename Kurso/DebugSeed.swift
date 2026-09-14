@@ -59,6 +59,7 @@ enum DebugSeed {
         let activity = DailyActivity(day: Calendar.current.startOfDay(for: .now))
         activity.cardsReviewed = 3
         activity.cardsCaptured = 1
+        activity.xpEarned = 45
         context.insert(activity)
 
         #if os(iOS)

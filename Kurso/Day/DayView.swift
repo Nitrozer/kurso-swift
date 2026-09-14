@@ -335,7 +335,11 @@ struct DayView: View {
     /// passage de niveau. La progression est sur le personnage, pas dans une barre —
     /// celle-ci ne fait que chiffrer ce que Gribou montre déjà.
     private var mineWear: Double {
-        GameValues.mineWear(writingSecondsSinceLevel: pages.reduce(0) { $0 + $1.writingSeconds })
+        // Depuis le dernier niveau, pas depuis l'installation : sans ce
+        // repere la mine restait usee a 100 % et ne se retaillait jamais.
+        let total = pages.reduce(0) { $0 + $1.writingSeconds }
+        let since = total - (player?.writingSecondsAtLevel ?? 0)
+        return GameValues.mineWear(writingSecondsSinceLevel: since)
     }
 
     private var mineGauge: some View {

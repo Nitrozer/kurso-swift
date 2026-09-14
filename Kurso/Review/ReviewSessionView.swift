@@ -19,8 +19,8 @@ struct ReviewSessionView: View {
     @State private var isMistakeBookRun = false
     /// A l'approche d'un partiel, la session change de forme (§9).
     @State private var isExamMode = false
-    /// Les coffres gagnes pendant la session, en attente d'etre ouverts.
-    @State private var chestRewards: [ChestStore.Reward] = []
+    /// Le passage de niveau a montrer, s'il y en a un.
+    @State private var celebration: ChestStore.Celebration?
 
     var body: some View {
         Group {
@@ -41,10 +41,17 @@ struct ReviewSessionView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(K.paper)
-        .sheet(isPresented: Binding(get: { !chestRewards.isEmpty },
-                                    set: { if !$0 { chestRewards = [] } })) {
-            ChestView(rewards: chestRewards) { chestRewards = [] }
+        // Plein ecran : la maquette montre un fond bleu bord a bord, pas une
+        // feuille posee sur la session.
+        #if os(iOS)
+        .fullScreenCover(item: $celebration) { won in
+            LevelUpView(celebration: won) { celebration = nil }
         }
+        #else
+        .sheet(item: $celebration) { won in
+            LevelUpView(celebration: won) { celebration = nil }
+        }
+        #endif
         .task {
             loadPlayer()
             isExamMode = SeasonStore.isExamMode(context)
@@ -58,10 +65,11 @@ struct ReviewSessionView: View {
             }
             if ProcessInfo.processInfo.arguments.contains("-simulateChest") {
                 let won = ChestStore.claim(context, isExamMode: isExamMode)
-                print("[chest] \(won.count) coffre(s) : " + won.map {
-                    "n\($0.level)=\($0.shavings)cp" + ($0.cover.map { c in "+\(c.rawValue)" } ?? "")
-                }.joined(separator: " "))
-                chestRewards = won
+                print("[chest] " + (won.map {
+                    "niveau \($0.level), \($0.rewards.count) coffre(s), \($0.shavings)cp, "
+                        + "\($0.freezes) gel(s), couvertures \($0.covers.map(\.rawValue))"
+                } ?? "aucun"))
+                celebration = won
             }
             // Permet d'inspecter l'ecran de carte sans pouvoir taper.
             if ProcessInfo.processInfo.arguments.contains("-autoStartReview"), session == nil {
@@ -405,6 +413,7 @@ struct ReviewSessionView: View {
         if let player {
             player.xp += gained
             player.level = GameValues.level(forTotalXP: player.xp)
+            DailyActivityStore.record(xp: gained, context: context)
             player.gommesRemaining = session.gommes
             player.shavings += answer == .failed ? 0 : GameValues.shavingsPerCard
         }
@@ -451,7 +460,7 @@ struct ReviewSessionView: View {
         // Le coffre tombe a la fin de la session, pas au milieu d'une carte :
         // on ne coupe pas quelqu'un qui enchaine.
         if session.outcome != .inProgress {
-            chestRewards = ChestStore.claim(context, isExamMode: isExamMode)
+            celebration = ChestStore.claim(context, isExamMode: isExamMode)
         }
 
         self.session = session

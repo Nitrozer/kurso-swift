@@ -28,6 +28,14 @@ enum DailyActivityStore {
         try? context.save()
     }
 
+    /// L'XP du jour, affiche au passage de niveau.
+    @MainActor
+    static func record(xp: Int, context: ModelContext) {
+        guard xp != 0 else { return }
+        today(context: context).xpEarned += xp
+        try? context.save()
+    }
+
     static func progress(_ kind: DailyProgress.QuestKind, in activity: DailyActivity) -> Int {
         switch kind {
         case .writePage:   activity.pagesWritten
