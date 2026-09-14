@@ -45,6 +45,12 @@ struct PageEditorView: View {
     @State private var pendingPDF: PickedPDF?
     @State private var isAdjustingPhoto = false
     @State private var isPickingPhotoForPage = false
+    @State private var recorder = LectureRecorder()
+    /// Les traits horodates de l'enregistrement en cours.
+    @State private var marks: [StrokeTimestamp] = []
+    /// Mode ecoute : toucher un mot rejoue ce que le prof disait.
+    @State private var isListening = false
+    @State private var audioNotice: String?
     /// Le volet des cartes capturees. On l'enleve pour ecrire large.
     @State private var exportProgress: Double?
     @State private var exported: ExportedFile?
@@ -102,6 +108,7 @@ struct PageEditorView: View {
                 onEndWriting: { latest in
                     clock.end(at: .now)
                     drawing = latest
+                    noteStroke(latest)
                     persist(latest)
                 }
             )
@@ -120,6 +127,14 @@ struct PageEditorView: View {
                         onChange: { rect in savePhotoFrame(rect) },
                         onReset: { page.photoRect = nil; try? context.save() },
                         onDone: { isAdjustingPhoto = false }
+                    )
+                }
+                if isListening {
+                    ListeningLayer(
+                        marks: listeningMarks,
+                        viewport: viewport,
+                        onPick: { play($0) },
+                        onClose: { isListening = false; recorder.stopPlaying() }
                     )
                 }
                 if isCapturingRegion {
@@ -303,6 +318,7 @@ struct PageEditorView: View {
             slideNav
             Spacer()
             #if os(iOS)
+            recordButton
             marginToggle
             pageMenu
             #endif
@@ -423,6 +439,92 @@ struct PageEditorView: View {
     }
 
     #if os(iOS)
+    /// Enregistrer le cours, ou l'arreter.
+    @ViewBuilder private var recordButton: some View {
+        if recorder.isRecording {
+            Button { finishRecording() } label: {
+                HStack(spacing: 7) {
+                    Circle().fill(K.endangered).frame(width: 9, height: 9)
+                    Text(AudioSync.clock(recorder.elapsed))
+                        .font(KFont.mono(11.5))
+                        .foregroundStyle(K.paperAlt)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(K.ink, in: Capsule())
+            }
+            .buttonStyle(.plain)
+        } else {
+            Menu {
+                Button("Enregistrer le cours") { Task { await beginRecording() } }
+                if hasRecording {
+                    Button(isListening ? "Quitter l'écoute" : "Écouter en touchant un mot") {
+                        isListening.toggle()
+                        if !isListening { recorder.stopPlaying() }
+                    }
+                }
+            } label: {
+                Text("Audio")
+                    .font(KFont.body(12, weight: .extraBold))
+                    .foregroundStyle(isListening ? K.paperAlt : K.ink)
+                    .padding(.horizontal, 13).padding(.vertical, 7)
+                    .background(isListening ? K.brand : .clear, in: Capsule())
+                    .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+        }
+    }
+
+    private var hasRecording: Bool { !(page.recordings ?? []).isEmpty }
+
+    /// Les traits horodates de la page, prets pour l'ecoute.
+    private var listeningMarks: [AudioSync.Mark] {
+        (page.recordings ?? []).flatMap { recording in
+            recording.strokeTimestamps.map {
+                AudioSync.Mark(strokeID: $0.strokeID,
+                               offsetSeconds: $0.offsetSeconds,
+                               anchor: CGPoint(x: $0.anchorX, y: $0.anchorY))
+            }
+        }
+    }
+
+    private func beginRecording() async {
+        marks = []
+        if await recorder.start() == false {
+            audioNotice = "Kurso n'a pas accès au micro."
+        }
+    }
+
+    /// Un trait termine retient l'instant ou il a ete trace (§7).
+    private func noteStroke(_ latest: PKDrawing) {
+        guard recorder.isRecording, let stroke = latest.strokes.last else { return }
+        let centre = stroke.renderBounds
+        marks.append(StrokeTimestamp(
+            strokeID: UUID(),
+            offsetSeconds: recorder.currentTime,
+            anchorX: centre.midX,
+            anchorY: centre.midY
+        ))
+    }
+
+    private func finishRecording() {
+        guard let done = recorder.stop() else { return }
+        let recording = AudioRecording(fileName: done.fileName, startedAt: .now)
+        recording.durationSeconds = done.duration
+        recording.strokeTimestamps = marks
+        recording.page = page
+        context.insert(recording)
+        try? context.save()
+        marks = []
+    }
+
+    private func play(_ mark: AudioSync.Mark) {
+        guard let recording = (page.recordings ?? []).first(where: { rec in
+            rec.strokeTimestamps.contains { $0.strokeID == mark.strokeID }
+        }) else { return }
+        recorder.play(recording.fileName, from: AudioSync.playbackTime(for: mark))
+    }
+
     /// Montre ou cache le volet de droite.
     private var marginToggle: some View {
         Button { marginShown.toggle() } label: {

@@ -106,6 +106,28 @@ enum DebugSeed {
         """
         context.insert(justFinished)
 
+        #if DEBUG
+        // Verifie que SwiftData accepte un tableau d'horodatages : c'est la
+        // meme famille de type que le CGRect qui plantait.
+        if ProcessInfo.processInfo.arguments.contains("-checkAudioModel") {
+            let rec = AudioRecording(fileName: "essai.m4a", startedAt: .now)
+            rec.durationSeconds = 42
+            rec.strokeTimestamps = [
+                StrokeTimestamp(strokeID: UUID(), offsetSeconds: 1.5),
+                StrokeTimestamp(strokeID: UUID(), offsetSeconds: 9.25),
+            ]
+            rec.page = page
+            context.insert(rec)
+            do {
+                try context.save()
+                let back = (try? context.fetch(FetchDescriptor<AudioRecording>()))?.first
+                print("[AUDIO] enregistre · horodatages relus = \(back?.strokeTimestamps.count ?? -1)")
+            } catch {
+                print("[AUDIO] ECHEC: \(error)")
+            }
+        }
+        #endif
+
         let player = PlayerState()
         player.xp = 320
         player.level = 7

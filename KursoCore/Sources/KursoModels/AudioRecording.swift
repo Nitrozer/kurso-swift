@@ -6,10 +6,17 @@ import SwiftData
 public struct StrokeTimestamp: Codable, Hashable, Sendable {
     public var strokeID: UUID
     public var offsetSeconds: Double
+    /// Centre du trait dans la page. Sans lui, toucher un mot ne saurait pas
+    /// quel trait on vise : PencilKit ne donne aucune identite stable.
+    public var anchorX: Double
+    public var anchorY: Double
 
-    public init(strokeID: UUID, offsetSeconds: Double) {
+    public init(strokeID: UUID, offsetSeconds: Double,
+                anchorX: Double = 0, anchorY: Double = 0) {
         self.strokeID = strokeID
         self.offsetSeconds = offsetSeconds
+        self.anchorX = anchorX
+        self.anchorY = anchorY
     }
 }
 
