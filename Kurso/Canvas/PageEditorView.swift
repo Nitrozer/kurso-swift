@@ -149,25 +149,7 @@ struct PageEditorView: View {
                         onDone: { isAdjustingPhoto = false }
                     )
                 }
-                // Toujours active : seules les images repondent au doigt, le
-                // stylet ecrit par-dessus sans qu'on quitte quoi que ce soit.
-                if !(page.images ?? []).isEmpty {
-                    ImagesLayer(
-                        images: (page.images ?? []).sorted { $0.order < $1.order },
-                        viewport: viewport,
-                        selected: $selectedImage,
-                        onChange: { item, box in
-                            item.rect = box
-                            try? context.save()
-                            reloadPlaced()
-                        },
-                        onDelete: { item in
-                            context.delete(item)
-                            try? context.save()
-                            reloadPlaced()
-                        }
-                    )
-                }
+                imagesLayer
                 if isListening {
                     ListeningLayer(
                         marks: listeningMarks,
@@ -558,6 +540,27 @@ struct PageEditorView: View {
         }
         recorder.play(recording.fileName, from: 0)
         audioNotice = "Lecture de \(AudioSync.clock(recording.durationSeconds))."
+    }
+
+    /// Les images posees : zones sensibles seulement, le dessin vient du fond.
+    @ViewBuilder private var imagesLayer: some View {
+        if !(page.images ?? []).isEmpty {
+            PlacedImagesLayer(
+                items: (page.images ?? []).sorted { $0.order < $1.order },
+                viewport: viewport,
+                selected: $selectedImage,
+                onChange: { item, box in
+                    item.rect = box
+                    try? context.save()
+                    reloadPlaced()
+                },
+                onDelete: { item in
+                    context.delete(item)
+                    try? context.save()
+                    reloadPlaced()
+                }
+            )
+        }
     }
 
     /// Une image ajoutee se pose en haut de page, a mi-largeur : de la on la
