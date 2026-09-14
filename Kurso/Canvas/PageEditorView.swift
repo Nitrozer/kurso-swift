@@ -51,7 +51,12 @@ struct PageEditorView: View {
     /// Un seul `.photosPicker` par vue : en poser deux les fait se neutraliser,
     /// et aucun ne s'ouvrait.
     private enum PhotoPurpose { case background, placed }
-    @State private var photoPurpose: PhotoPurpose?
+    /// L'intention SURVIT a la fermeture du selecteur.
+    ///
+    /// Elle etait portee par le binding de presentation : se fermer la remettait
+    /// a nil, et la photo choisie arrivait apres — donc toujours ignoree.
+    @State private var photoPurpose: PhotoPurpose = .placed
+    @State private var isPickingPhoto = false
     @State private var recorder = LectureRecorder()
     /// Les traits horodates de l'enregistrement en cours.
     @State private var marks: [StrokeTimestamp] = []
@@ -288,10 +293,8 @@ struct PageEditorView: View {
         #if os(iOS)
         .sheet(item: $exported) { ShareSheet(url: $0.url) }
         #if os(iOS)
-        .photosPicker(isPresented: Binding(
-            get: { photoPurpose != nil },
-            set: { if !$0 { photoPurpose = nil } }
-        ), selection: $pickedPhoto, matching: .images)
+        .photosPicker(isPresented: $isPickingPhoto,
+                      selection: $pickedPhoto, matching: .images)
         #endif
         .alert("Enregistrement",
                isPresented: Binding(get: { audioNotice != nil },
@@ -322,19 +325,19 @@ struct PageEditorView: View {
         .animation(.snappy(duration: 0.28), value: marginShown)
         #if os(iOS)
         .onChange(of: pickedPhoto) { _, item in
-            guard let item, let purpose = photoPurpose else { return }
+            guard let item else { return }
+            let purpose = photoPurpose
             Task {
                 switch purpose {
                 case .background: await adopt(item)
                 case .placed:     await adoptPlaced(item)
                 }
-                photoPurpose = nil
             }
         }
         .task { reloadPlaced() }
         #if os(iOS)
         .onChange(of: addImageRequest) { _, value in
-            if value != nil { photoPurpose = .placed }
+            if value != nil { photoPurpose = .placed; isPickingPhoto = true }
         }
         #endif
         #endif
@@ -663,7 +666,7 @@ struct PageEditorView: View {
                     }
                 }
             }
-            Button("Ajouter une image") { photoPurpose = .placed }
+            Button("Ajouter une image") { photoPurpose = .placed; isPickingPhoto = true }
             if hasBackdrop {
                 Button(isCapturingRegion ? "Annuler la capture" : "Capturer un morceau") {
                     isCapturingRegion.toggle()

@@ -67,6 +67,19 @@ struct LibraryView: View {
                    let first = courses.first {
                     customising = first
                 }
+                if ProcessInfo.processInfo.arguments.contains("-checkPageActions") {
+                    let before = pages.count
+                    if let first = orderedCurrent.first ?? pages.first {
+                        duplicate(first)
+                        let afterCopy = (try? context.fetch(FetchDescriptor<Page>()))?.count ?? -1
+                        pageToDelete = openedPage
+                        deletePage()
+                        let afterDelete = (try? context.fetch(FetchDescriptor<Page>()))?.count ?? -1
+                        print("[PAGES] avant=\(before) apres duplication=\(afterCopy) apres suppression=\(afterDelete)")
+                    } else {
+                        print("[PAGES] aucune page")
+                    }
+                }
                 if ProcessInfo.processInfo.arguments.contains("-openLoose") {
                     showsLoose = true
                     openFirst(of: nil)
@@ -120,6 +133,10 @@ struct LibraryView: View {
     }
 
     @ViewBuilder private var content: some View {
+        // La confirmation vit ICI, pas sur `library` : quand une page est
+        // ouverte, `library` n'est pas affichee, et la boite n'existait donc
+        // pas au moment ou le panneau la demandait.
+        Group {
         if let page = openedPage {
             HStack(spacing: 0) {
                 #if os(iOS)
@@ -166,6 +183,19 @@ struct LibraryView: View {
             .animation(.snappy(duration: 0.28), value: navigatorShown)
         } else {
             library
+        }
+        }
+        .confirmationDialog(
+            "Supprimer cette page ?",
+            isPresented: Binding(get: { pageToDelete != nil },
+                                 set: { if !$0 { pageToDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Supprimer", role: .destructive) { deletePage() }
+            Button("Annuler", role: .cancel) { pageToDelete = nil }
+        } message: {
+            // Une page emporte ses cartes : il faut le dire avant, pas apres.
+            Text(deletionWarning)
         }
     }
 
@@ -298,17 +328,6 @@ struct LibraryView: View {
             Task { await adoptPhoto(item, at: position) }
         }
         #endif
-        .confirmationDialog(
-            "Supprimer cette page ?",
-            isPresented: Binding(get: { pageToDelete != nil }, set: { if !$0 { pageToDelete = nil } }),
-            titleVisibility: .visible
-        ) {
-            Button("Supprimer", role: .destructive) { deletePage() }
-            Button("Annuler", role: .cancel) { pageToDelete = nil }
-        } message: {
-            // Une page emporte ses cartes : il faut le dire avant, pas apres.
-            Text(deletionWarning)
-        }
         .fileImporter(isPresented: $isPickingPDF, allowedContentTypes: [.pdf]) { result in
             guard case .success(let url) = result else { return }
             #if os(iOS)

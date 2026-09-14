@@ -68,7 +68,6 @@ struct PageNavigator: View {
         Menu {
             Button("Page manuscrite") { onAdd(.handwritten, end) }
             Button("Pages d'un PDF") { onAdd(.pdf, end) }
-            Button("Une image") { onAdd(.image, end) }
         } label: {
             VStack(spacing: 5) {
                 ZStack {

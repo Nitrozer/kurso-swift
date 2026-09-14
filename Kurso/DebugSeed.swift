@@ -141,6 +141,23 @@ enum DebugSeed {
         }
         #endif
 
+        #if os(iOS)
+        // Une image posee, pour verifier son rendu et ses poignees.
+        let art = UIGraphicsImageRenderer(size: CGSize(width: 600, height: 400)).image { ctx in
+            UIColor.systemTeal.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 600, height: 400))
+            UIColor.white.setFill()
+            ctx.fill(CGRect(x: 60, y: 60, width: 480, height: 90))
+        }
+        let placedImage = PageImage(data: art.jpegData(compressionQuality: 0.8))
+        placedImage.x = 0.12
+        placedImage.y = 0.03
+        placedImage.width = 0.6
+        placedImage.height = 0.6 * (400.0 / 600.0) * (1_240.0 / 3_000.0)
+        placedImage.page = justFinished
+        context.insert(placedImage)
+        #endif
+
         let player = PlayerState()
         player.xp = 320
         player.level = 7
