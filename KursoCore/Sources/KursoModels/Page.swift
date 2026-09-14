@@ -68,6 +68,10 @@ import SwiftData
     @Relationship(deleteRule: .cascade, inverse: \AudioRecording.page)
     public var recordings: [AudioRecording]? = []
 
+    /// Les images posees sur la page, deplacables et redimensionnables.
+    @Relationship(deleteRule: .cascade, inverse: \PageImage.page)
+    public var images: [PageImage]? = []
+
     public var chapter: Chapter?
 
     /// Lien chronologique = arete de la carte. Relation reflexive : son inverse

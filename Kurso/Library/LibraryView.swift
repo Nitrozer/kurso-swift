@@ -27,6 +27,10 @@ struct LibraryView: View {
     @Query(sort: \Page.createdAt, order: .reverse) private var pages: [Page]
 
     /// Le cahier ouvert. Nil : on regarde la planche des cahiers.
+    /// Le panneau des pages se replie, comme celui des cartes.
+    @State private var navigatorShown = true
+    /// Change pour demander a la feuille d'ouvrir le selecteur d'image.
+    @State private var addImageRequest: UUID?
     @State private var openedCourse: Course?
     /// Les pages sans matiere, ouvertes comme un cahier a part.
     @State private var showsLoose = false
@@ -115,6 +119,23 @@ struct LibraryView: View {
         if let page = openedPage {
             HStack(spacing: 0) {
                 #if os(iOS)
+                if !navigatorShown {
+                    Button { navigatorShown = true } label: {
+                        ChevronGlyph()
+                            .stroke(K.ink, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                            .frame(width: 9, height: 9)
+                            .rotationEffect(.degrees(180))
+                            .frame(width: 26, height: 44)
+                            .background(K.paperAlt)
+                            .overlay(alignment: .trailing) {
+                                Rectangle().fill(K.ink.opacity(0.12)).frame(width: 1)
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .accessibilityLabel("Déplier les pages")
+                }
+                if navigatorShown {
                 // Comme dans un vrai cahier : on tombe sur la feuille, et le
                 // panneau sert a se deplacer dedans.
                 PageNavigator(
@@ -125,15 +146,21 @@ struct LibraryView: View {
                         insert(kind, at: position, in: openedCourse)
                     },
                     onDuplicate: { duplicate($0) },
-                    onDelete: { pageToDelete = $0 }
+                    onDelete: { pageToDelete = $0 },
+                    onAddImageHere: { addImageRequest = UUID() },
+                    onCollapse: { navigatorShown = false }
                 )
+                .transition(.move(edge: .leading))
                 Rectangle().fill(K.ink.opacity(0.12)).frame(width: 1)
+                }
                 #endif
                 PageEditorView(page: page,
                                onClose: { closeCahier() },
-                               onOpenSlide: { openedPage = $0 })
+                               onOpenSlide: { openedPage = $0 },
+                               addImageRequest: addImageRequest)
                     .id(page.id)
             }
+            .animation(.snappy(duration: 0.28), value: navigatorShown)
         } else {
             library
         }

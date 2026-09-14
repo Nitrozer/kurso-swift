@@ -23,6 +23,13 @@ struct PaperBackdrop: View {
         var size: CGSize = .zero
     }
 
+    /// Une image posee sur la page, avec son cadre en fractions.
+    struct Placed: Identifiable {
+        public let id: UUID
+        public let image: CGImage
+        public let box: CGRect
+    }
+
     /// Un morceau de diapo rendu a la resolution de l'ecran.
     /// `crop` est normalise dans l'image de base, origine en haut a gauche.
     struct Tile {
@@ -39,6 +46,8 @@ struct PaperBackdrop: View {
     var backdropTile: Tile?
     /// Ou l'image est posee, en fractions de page. Nil : pleine largeur, en haut.
     var backdropBox: CGRect?
+    /// Les images posees sur la page, dans leur ordre d'empilement.
+    var placed: [Placed] = []
 
     private let lineSpacing: CGFloat = 32
     private let marginX: CGFloat = 96
@@ -77,6 +86,14 @@ struct PaperBackdrop: View {
                 }
                 return
             }
+            // Les images posees viennent au-dessus du papier, sous l'ecriture.
+            for item in placed {
+                let target = Self.placement(
+                    image: CGSize(width: item.image.width, height: item.image.height),
+                    box: item.box, in: page)
+                context.draw(Image(decorative: item.image, scale: 1), in: target)
+            }
+
             guard template != .blank else { return }
 
             let step = lineSpacing * viewport.zoom

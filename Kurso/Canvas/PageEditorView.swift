@@ -13,6 +13,8 @@ struct PageEditorView: View {
     var onClose: () -> Void = {}
     /// Ouvre une autre diapo du meme PDF.
     var onOpenSlide: (Page) -> Void = { _ in }
+    /// Demande venue du panneau : ouvrir le selecteur d'image.
+    var addImageRequest: UUID?
     @Environment(\.modelContext) private var context
 
     @State private var drawing: PKDrawing
@@ -45,12 +47,18 @@ struct PageEditorView: View {
     @State private var pendingPDF: PickedPDF?
     @State private var isAdjustingPhoto = false
     @State private var isPickingPhotoForPage = false
+    @State private var isPickingPlaced = false
     @State private var recorder = LectureRecorder()
     /// Les traits horodates de l'enregistrement en cours.
     @State private var marks: [StrokeTimestamp] = []
     /// Mode ecoute : toucher un mot rejoue ce que le prof disait.
     @State private var isListening = false
     @State private var audioNotice: String?
+    /// Les images posees, decodees une fois.
+    @State private var placed: [PaperBackdrop.Placed] = []
+    @State private var isArrangingImages = false
+    /// Une image ajoutee depuis le panneau, pas en fond de page.
+    @State private var pickedPlaced: PhotosPickerItem?
     /// Le volet des cartes capturees. On l'enleve pour ecrire large.
     @State private var exportProgress: Double?
     @State private var exported: ExportedFile?
@@ -69,10 +77,12 @@ struct PageEditorView: View {
     /// par-dessus la page, et le travail etait perdu a la simple ouverture.
     init(page: Page,
          onClose: @escaping () -> Void = {},
-         onOpenSlide: @escaping (Page) -> Void = { _ in }) {
+         onOpenSlide: @escaping (Page) -> Void = { _ in },
+         addImageRequest: UUID? = nil) {
         _page = Bindable(page)
         self.onClose = onClose
         self.onOpenSlide = onOpenSlide
+        self.addImageRequest = addImageRequest
         let stored = page.drawing
         let hasStored = !(stored ?? Data()).isEmpty
         let loaded = hasStored ? try? PKDrawing(data: stored!) : PKDrawing()
@@ -98,7 +108,8 @@ struct PageEditorView: View {
                                      height: DrawingCanvas.pageHeight),
                     backdrop: backdropImage,
                     backdropTile: backdropTile,
-                    backdropBox: page.photoRect
+                    backdropBox: page.photoRect,
+                    placed: placed
                 )
                 DrawingCanvas(
                 drawing: $drawing,
@@ -127,6 +138,23 @@ struct PageEditorView: View {
                         onChange: { rect in savePhotoFrame(rect) },
                         onReset: { page.photoRect = nil; try? context.save() },
                         onDone: { isAdjustingPhoto = false }
+                    )
+                }
+                if isArrangingImages {
+                    ImagesLayer(
+                        images: (page.images ?? []).sorted { $0.order < $1.order },
+                        viewport: viewport,
+                        onChange: { item, box in
+                            item.rect = box
+                            try? context.save()
+                            reloadPlaced()
+                        },
+                        onDelete: { item in
+                            context.delete(item)
+                            try? context.save()
+                            reloadPlaced()
+                        },
+                        onClose: { isArrangingImages = false }
                     )
                 }
                 if isListening {
@@ -236,6 +264,13 @@ struct PageEditorView: View {
         #endif
         #if os(iOS)
         .sheet(item: $exported) { ShareSheet(url: $0.url) }
+        .alert("Enregistrement",
+               isPresented: Binding(get: { audioNotice != nil },
+                                    set: { if !$0 { audioNotice = nil } })) {
+            Button("D'accord", role: .cancel) { audioNotice = nil }
+        } message: {
+            Text(audioNotice ?? "")
+        }
         .fileImporter(isPresented: $isPickingPDF, allowedContentTypes: [.pdf]) { result in
             guard case .success(let url) = result else { return }
             pendingPDF = PickedPDF(url: url)
@@ -261,11 +296,27 @@ struct PageEditorView: View {
             guard let item else { return }
             Task { await adopt(item) }
         }
+        .onChange(of: pickedPlaced) { _, item in
+            guard let item else { return }
+            Task { await adoptPlaced(item) }
+        }
+        .task { reloadPlaced() }
+        #if os(iOS)
+        .onChange(of: addImageRequest) { _, value in
+            if value != nil { isPickingPlaced = true }
+        }
+        #endif
         #endif
         #if os(iOS)
         .overlay { ExportProgress(value: exportProgress) }
         #endif
         .onDisappear {
+            // Un enregistrement en cours se termine et se garde : partir
+            // ailleurs ne doit pas effacer une heure de cours.
+            #if os(iOS)
+            if recorder.isRecording { finishRecording() }
+            recorder.stopPlaying()
+            #endif
             persist()
             #if os(iOS)
             // Filet : quitter l'onglet ne demonte pas toujours le canevas.
@@ -457,10 +508,14 @@ struct PageEditorView: View {
             Menu {
                 Button("Enregistrer le cours") { Task { await beginRecording() } }
                 if hasRecording {
+                    Button("Lire depuis le début") { playFromStart() }
                     Button(isListening ? "Quitter l'écoute" : "Écouter en touchant un mot") {
                         isListening.toggle()
                         if !isListening { recorder.stopPlaying() }
                     }
+                    Button("Arrêter la lecture") { recorder.stopPlaying() }
+                } else {
+                    Text("Aucun enregistrement sur cette page")
                 }
             } label: {
                 Text("Audio")
@@ -491,7 +546,7 @@ struct PageEditorView: View {
     private func beginRecording() async {
         marks = []
         if await recorder.start() == false {
-            audioNotice = "Kurso n'a pas accès au micro."
+            audioNotice = "Kurso n'a pas pu enregistrer. Vérifie l'accès au micro dans Réglages."
         }
     }
 
@@ -508,14 +563,70 @@ struct PageEditorView: View {
     }
 
     private func finishRecording() {
-        guard let done = recorder.stop() else { return }
+        guard let done = recorder.stop() else {
+            audioNotice = "Rien n'a été enregistré."
+            return
+        }
         let recording = AudioRecording(fileName: done.fileName, startedAt: .now)
         recording.durationSeconds = done.duration
         recording.strokeTimestamps = marks
         recording.page = page
         context.insert(recording)
         try? context.save()
+        audioNotice = "Enregistrement gardé : \(AudioSync.clock(done.duration)), \(marks.count) repère\(marks.count > 1 ? "s" : "") d'écriture."
         marks = []
+    }
+
+    /// Lire tout, sans viser un mot : c'est ce qui permet de verifier qu'un
+    /// enregistrement existe vraiment.
+    private func playFromStart() {
+        guard let recording = (page.recordings ?? []).last else {
+            audioNotice = "Aucun enregistrement sur cette page."
+            return
+        }
+        recorder.play(recording.fileName, from: 0)
+        audioNotice = "Lecture de \(AudioSync.clock(recording.durationSeconds))."
+    }
+
+    /// Une image ajoutee se pose en haut de page, a mi-largeur : de la on la
+    /// deplace et on la retaille comme on veut.
+    private func adoptPlaced(_ item: PhotosPickerItem) async {
+        defer { pickedPlaced = nil }
+        guard let raw = try? await item.loadTransferable(type: Data.self),
+              let source = UIImage(data: raw) else { return }
+        let maxSide: CGFloat = 1_600
+        let scale = min(1, maxSide / max(source.size.width, source.size.height))
+        let size = CGSize(width: source.size.width * scale, height: source.size.height * scale)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let reduced = UIGraphicsImageRenderer(size: size, format: format).image { context in
+            context.cgContext.interpolationQuality = .high
+            source.draw(in: CGRect(origin: .zero, size: size))
+        }
+        let made = PageImage(data: reduced.jpegData(compressionQuality: 0.8))
+        let ratio = size.height / max(size.width, 1)
+        made.width = 0.5
+        // La page est haute : une image large occupe peu de hauteur relative.
+        made.height = 0.5 * ratio * (PaperBackdrop.pageWidth / PaperBackdrop.pageHeight)
+        made.x = 0.25
+        made.y = 0.05
+        made.order = Double((page.images ?? []).count)
+        made.page = page
+        context.insert(made)
+        try? context.save()
+        reloadPlaced()
+        isArrangingImages = true
+    }
+
+    /// Decode les images une fois : les relire a chaque image du zoom
+    /// ferait ramer le stylet.
+    private func reloadPlaced() {
+        placed = (page.images ?? [])
+            .sorted { $0.order < $1.order }
+            .compactMap { item in
+                guard let data = item.data, let image = UIImage(data: data)?.cgImage else { return nil }
+                return PaperBackdrop.Placed(id: item.id, image: image, box: item.rect)
+            }
     }
 
     private func play(_ mark: AudioSync.Mark) {
@@ -545,6 +656,12 @@ struct PageEditorView: View {
     private var pageMenu: some View {
         Menu {
             Button("Exporter") { exportCurrent() }
+            Button("Ajouter une image") { isPickingPlaced = true }
+            if !(page.images ?? []).isEmpty {
+                Button(isArrangingImages ? "Terminer le placement" : "Déplacer les images") {
+                    isArrangingImages.toggle()
+                }
+            }
             Menu("Papier") {
                 ForEach(PaperKind.allCases, id: \.self) { kind in
                     Button(kind.label) {
@@ -571,6 +688,8 @@ struct PageEditorView: View {
         .fixedSize()
         .photosPicker(isPresented: $isPickingPhotoForPage,
                       selection: $pickedPhoto, matching: .images)
+        .photosPicker(isPresented: $isPickingPlaced,
+                      selection: $pickedPlaced, matching: .images)
     }
 
     private func exportCurrent() {

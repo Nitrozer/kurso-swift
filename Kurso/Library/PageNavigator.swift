@@ -15,12 +15,16 @@ struct PageNavigator: View {
     var onAdd: (Kind, Double) -> Void
     var onDuplicate: (Page) -> Void
     var onDelete: (Page) -> Void
+    /// Poser une image sur la page ouverte, pas en creer une nouvelle.
+    var onAddImageHere: () -> Void = {}
+    var onCollapse: () -> Void = {}
 
     enum Kind { case handwritten, pdf, image }
 
     var body: some View {
         VStack(spacing: 0) {
             addBar
+            currentPageBar
             ScrollView {
                 LazyVStack(spacing: 12) {
                     ForEach(Array(pages.enumerated()), id: \.element.id) { index, page in
@@ -73,9 +77,47 @@ struct PageNavigator: View {
 
     // MARK: Ajouter
 
+    /// Ce qu'on pose SUR la page ouverte, distinct de ce qui cree une page.
+    /// En haut comme le reste : la palette PencilKit flotte en bas.
+    private var currentPageBar: some View {
+        Button { onAddImageHere() } label: {
+            HStack(spacing: 8) {
+                Glyph(kind: .plus, size: 12)
+                Text("Image sur cette page")
+                    .font(KFont.body(11.5, weight: .extraBold))
+                    .foregroundStyle(K.ink)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 11)
+            .background(K.paper)
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(K.ink.opacity(0.12)).frame(height: 1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
     /// En HAUT du panneau : la palette PencilKit flotte en bas et recouvrait
     /// entierement ce bouton.
     private var addBar: some View {
+        HStack(spacing: 0) {
+            Button { onCollapse() } label: {
+                ChevronGlyph()
+                    .stroke(K.ink, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                    .frame(width: 9, height: 9)
+                    .frame(width: 34, height: 40)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Replier les pages")
+            menuBar
+        }
+        .background(K.paperAlt)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(K.ink.opacity(0.12)).frame(height: 1)
+        }
+    }
+
+    private var menuBar: some View {
         Menu {
             Button("Page manuscrite") { onAdd(.handwritten, end) }
             Button("Pages d'un PDF") { onAdd(.pdf, end) }
@@ -89,10 +131,6 @@ struct PageNavigator: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
-            .background(K.paperAlt)
-            .overlay(alignment: .bottom) {
-                Rectangle().fill(K.ink.opacity(0.12)).frame(height: 1)
-            }
         }
         .menuStyle(.borderlessButton)
     }
