@@ -26,6 +26,9 @@ import SwiftData
     public var displayName: String = ""
     /// L'onboarding ne se rejoue pas.
     public var hasCompletedOnboarding: Bool = false
+    /// Dernier jour ou une session a ete terminee. Sans lui, la serie ne
+    /// saurait pas distinguer « deja compte » de « jour suivant » (§9).
+    public var lastStreakDay: Date?
 
     public init() {}
 }

@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 import SwiftData
 import KursoCore
@@ -17,8 +18,9 @@ struct OcclusionLayer: View {
     let pageIndex: Int
     /// Zoom et defilement du canevas, pour retrouver ou la diapo est posee.
     let viewport: PaperBackdrop.Viewport
-    /// Taille en pixels de la diapo rendue, pour son rapport de forme.
-    let slideSize: CGSize
+    /// La diapo rendue : sa taille sert au reperage, son image part avec la
+    /// carte pour qu'on puisse reviser sans rouvrir le PDF.
+    let slideImage: CGImage?
     var onFinish: () -> Void
 
     @Environment(\.modelContext) private var context
@@ -146,8 +148,9 @@ struct OcclusionLayer: View {
         let pageRect = CGRect(x: -viewport.offset.x, y: -viewport.offset.y,
                               width: PaperBackdrop.pageWidth * viewport.zoom,
                               height: PaperBackdrop.pageHeight * viewport.zoom)
-        guard slideSize.width > 0, slideSize.height > 0 else { return pageRect }
-        return PaperBackdrop.fitted(slideSize, into: pageRect)
+        guard let slideImage else { return pageRect }
+        return PaperBackdrop.fitted(
+            CGSize(width: slideImage.width, height: slideImage.height), into: pageRect)
     }
 
     private func toScreen(_ fraction: CGRect) -> CGRect {
@@ -182,10 +185,26 @@ struct OcclusionLayer: View {
               let fraction = toFraction(draft) else { return }
         let card = Card(question: "Que cache cette zone ?", kind: .imageOcclusion, dueAt: .now)
         card.occlusionRect = fraction
+        card.imageData = Self.snapshot(slideImage)
         card.page = page
         context.insert(card)
         try? context.save()
         self.draft = nil
+    }
+
+    /// La diapo, reduite : une carte doit rester legere, elle part dans iCloud.
+    private static func snapshot(_ image: CGImage?) -> Data? {
+        guard let image else { return nil }
+        let targetWidth: CGFloat = 1_200
+        let scale = min(1, targetWidth / CGFloat(image.width))
+        let size = CGSize(width: CGFloat(image.width) * scale,
+                          height: CGFloat(image.height) * scale)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let reduced = renderer.image { context in
+            context.cgContext.interpolationQuality = .high
+            UIImage(cgImage: image).draw(in: CGRect(origin: .zero, size: size))
+        }
+        return reduced.jpegData(compressionQuality: 0.75)
     }
 
     private func delete(_ card: Card) {
@@ -194,3 +213,4 @@ struct OcclusionLayer: View {
         selected = nil
     }
 }
+#endif

@@ -48,3 +48,13 @@ struct OcclusionStorageTests {
         #expect(card.occlusion == nil)
     }
 }
+
+@Suite("Types refuses par SwiftData")
+struct UnstorableTypeTests {
+    @Test("Un Range s'encode en tableau, comme un CGRect")
+    func rangeIsUnkeyed() throws {
+        let data = try JSONEncoder().encode(3..<7)
+        let decoded = try JSONSerialization.jsonObject(with: data)
+        #expect(decoded is [Any], "si Range devenait clé, le contournement ne servirait plus")
+    }
+}

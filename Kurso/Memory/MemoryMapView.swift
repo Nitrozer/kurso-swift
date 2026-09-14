@@ -202,7 +202,10 @@ struct MemoryMapView: View {
 
     private var coursePages: [Page] {
         guard let id = selectedCourseID else { return [] }
-        return pages.filter { $0.course?.id == id }.sorted { $0.createdAt > $1.createdAt }
+        // Un PDF ne compte que pour un noeud : voir toutes ses diapos alignees
+        // noyait la carte du semestre sous des dizaines d'entrees identiques.
+        let ofCourse = pages.filter { $0.course?.id == id }
+        return Page.collapsingSlides(ofCourse).sorted { $0.createdAt > $1.createdAt }
     }
 
     private var summary: String {

@@ -32,6 +32,7 @@ struct PageEditorView: View {
     @State private var pdfTile: PaperBackdrop.Tile?
     @State private var tileTask: Task<Void, Never>?
     @Environment(\.displayScale) private var displayScale
+    @FocusState private var titleFocused: Bool
     #if os(iOS)
     @State private var canvasHandle = CanvasHandle()
     #endif
@@ -92,7 +93,7 @@ struct PageEditorView: View {
                         page: page,
                         pageIndex: index,
                         viewport: viewport,
-                        slideSize: pdfImage.map { CGSize(width: $0.width, height: $0.height) } ?? .zero
+                        slideImage: pdfImage
                     ) { isMasking = false }
                 }
                 if isCapturing {
@@ -151,6 +152,16 @@ struct PageEditorView: View {
             }
             #endif
         }
+        #if os(iOS)
+        // Le champ du titre prend le premier repondant, et la palette
+        // PencilKit disparait avec. On la rend des qu'on quitte le champ.
+        .onChange(of: titleFocused) { _, focused in
+            if !focused { canvasHandle.canvas?.becomeFirstResponder() }
+        }
+        .onChange(of: isMasking) { _, masking in
+            if !masking { canvasHandle.canvas?.becomeFirstResponder() }
+        }
+        #endif
         .onDisappear {
             persist()
         }
@@ -187,6 +198,9 @@ struct PageEditorView: View {
                     }
                 ))
                 .textFieldStyle(.plain)
+                .focused($titleFocused)
+                .submitLabel(.done)
+                .onSubmit { titleFocused = false }
                 .font(KFont.display(19))
                 .foregroundStyle(K.ink)
                 .frame(minWidth: 120, idealWidth: 240, maxWidth: 320, alignment: .leading)
@@ -277,6 +291,18 @@ struct PageEditorView: View {
                 .strokeBorder(K.ink, lineWidth: 2))
     }
 
+    /// Ranger une diapo range TOUT le PDF.
+    ///
+    /// Un polycopie appartient a une matiere entiere : classer page par page
+    /// n'aurait aucun sens, et laissait les autres diapos orphelines.
+    private func assignCourse(_ course: Course?) {
+        let siblings = slideSiblings
+        for target in siblings.isEmpty ? [page] : siblings {
+            target.course = course
+        }
+        try? context.save()
+    }
+
     private var slideSiblings: [Page] {
         guard let asset = page.pdfAssetID else { return [] }
         return allPages
@@ -294,15 +320,12 @@ struct PageEditorView: View {
         if !courses.isEmpty {
             Menu {
                 ForEach(courses) { course in
-                    Button(course.name) {
-                        page.course = course
-                        try? context.save()
-                    }
+                    Button(course.name) { assignCourse(course) }
                 }
                 if page.course != nil {
                     Divider()
                     Button("Retirer la matière", role: .destructive) {
-                        page.course = nil
+                        assignCourse(nil)
                         try? context.save()
                     }
                 }

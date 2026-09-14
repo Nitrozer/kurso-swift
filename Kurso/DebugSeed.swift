@@ -61,6 +61,15 @@ enum DebugSeed {
         activity.cardsCaptured = 1
         context.insert(activity)
 
+        #if os(iOS)
+        // Une carte tiree d'une diapo, pour verifier son rendu en revision.
+        let masked = Card(question: "Que cache cette zone ?", kind: .imageOcclusion, dueAt: .now)
+        masked.occlusionRect = CGRect(x: 0.12, y: 0.18, width: 0.55, height: 0.14)
+        masked.imageData = demoSlide()
+        masked.page = page
+        context.insert(masked)
+        #endif
+
         let player = PlayerState()
         player.xp = 320
         player.level = 7
@@ -76,6 +85,23 @@ enum DebugSeed {
     }
 
     /// Un trace, pour que le verso d'une carte ait quelque chose a montrer.
+    #if os(iOS)
+    /// Une fausse diapo : bandeau de titre, deux paragraphes.
+    private static func demoSlide() -> Data? {
+        let size = CGSize(width: 1_200, height: 850)
+        return UIGraphicsImageRenderer(size: size).image { ctx in
+            UIColor.white.setFill()
+            ctx.fill(CGRect(origin: .zero, size: size))
+            UIColor(red: 0.23, green: 0.36, blue: 1, alpha: 1).setFill()
+            ctx.fill(CGRect(x: 70, y: 90, width: 900, height: 110))
+            UIColor(white: 0.85, alpha: 1).setFill()
+            for row in 0..<5 {
+                ctx.fill(CGRect(x: 70, y: 300 + row * 70, width: 1_000 - row * 90, height: 26))
+            }
+        }.jpegData(compressionQuality: 0.8)
+    }
+    #endif
+
     private static func handwriting() -> PKDrawing {
         let ink = PKInk(.pen, color: .black)
         var strokes: [PKStroke] = []

@@ -105,6 +105,16 @@ struct ReviewSessionView: View {
                     .foregroundStyle(K.ink)
                     .multilineTextAlignment(.center)
 
+                // Une carte tiree d'une diapo montre la diapo : la zone reste
+                // couverte tant qu'on n'a pas repondu.
+                if let slide = slideImage {
+                    OcclusionPreview(image: slide,
+                                     hidden: current?.occlusionRect,
+                                     isRevealed: isRevealed)
+                        .frame(maxHeight: 340)
+                        .sticker(fill: K.paperAlt, radius: 18, state: isRevealed ? .done : .rest)
+                }
+
                 if isRevealed { verso }
             }
             .padding(28)
@@ -139,6 +149,16 @@ struct ReviewSessionView: View {
                 .font(KFont.body(13, weight: .bold))
                 .foregroundStyle(K.inkSoft)
         }
+    }
+
+    /// La diapo enregistree avec la carte, s'il y en a une.
+    private var slideImage: CGImage? {
+        guard let data = current?.imageData else { return nil }
+        #if canImport(UIKit)
+        return UIImage(data: data)?.cgImage
+        #else
+        return NSImage(data: data)?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        #endif
     }
 
     private var versoImage: Image? {
@@ -319,6 +339,19 @@ struct ReviewSessionView: View {
             player.level = GameValues.level(forTotalXP: player.xp)
             player.gommesRemaining = session.gommes
             player.shavings += answer == .failed ? 0 : GameValues.shavingsPerCard
+        }
+        // La serie avance quand une session est terminee, pas a chaque carte.
+        if session.outcome == .finished, let player {
+            let updated = StreakRule.sessionFinished(
+                StreakRule.State(streak: player.streak,
+                                 record: player.recordStreak,
+                                 lastDay: player.lastStreakDay,
+                                 freezes: player.freezesRemaining)
+            )
+            player.streak = updated.streak
+            player.recordStreak = updated.record
+            player.lastStreakDay = updated.lastDay
+            player.freezesRemaining = updated.freezes
         }
         try? context.save()
 

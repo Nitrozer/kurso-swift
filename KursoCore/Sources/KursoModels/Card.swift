@@ -36,7 +36,16 @@ public struct OcclusionBox: Codable, Hashable, Sendable {
     /// SwiftData en exige un cle — il plantait a l'enregistrement avec
     /// « Composite Coder only supports Keyed Container ».
     public var occlusion: OcclusionBox?
-    public var sourceLineRange: Range<Int>?
+    /// Lignes du markdown d'ou vient la carte.
+    ///
+    /// Deux entiers, jamais un Range : comme CGRect, un Range s'encode en
+    /// tableau, et SwiftData exige un conteneur a cles.
+    public var sourceLineStart: Int?
+    public var sourceLineEnd: Int?
+
+    /// Image de la diapo dont la carte est tiree, pour pouvoir la reviser
+    /// sans rouvrir le PDF.
+    @Attribute(.externalStorage) public var imageData: Data?
 
     // Etat de repetition espacee (§2).
     public var interval: Int = 0
@@ -52,6 +61,18 @@ public struct OcclusionBox: Codable, Hashable, Sendable {
     public var kind: CardKind {
         get { CardKind(rawValue: kindRaw) ?? .frontBack }
         set { kindRaw = newValue.rawValue }
+    }
+
+    /// Vue pratique sur les deux bornes.
+    public var sourceLineRange: Range<Int>? {
+        get {
+            guard let start = sourceLineStart, let end = sourceLineEnd, start < end else { return nil }
+            return start..<end
+        }
+        set {
+            sourceLineStart = newValue?.lowerBound
+            sourceLineEnd = newValue?.upperBound
+        }
     }
 
     /// Vue pratique sur `occlusion`, pour le code d'affichage.
