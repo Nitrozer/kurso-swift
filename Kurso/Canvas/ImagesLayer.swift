@@ -36,19 +36,27 @@ struct ImagesLayer: View {
                 }
                 .allowsHitTesting(false)
 
-                // Seule la surface de l'image repond au doigt.
+                // Seule la surface de l'image repond au doigt, et elle ne se
+                // deplace QUE si elle est deja choisie : sinon le premier doigt
+                // d'un pincement la trainait au lieu de zoomer la page.
                 Color.clear
                     .frame(width: max(frame.width, 1), height: max(frame.height, 1))
                     .offset(x: frame.minX, y: frame.minY)
                     .contentShape(Rectangle())
                     .onTapGesture { selected = (selected == item.id) ? nil : item.id }
-                    .gesture(moveGesture(item))
+                    .gesture(moveGesture(item), isEnabled: selected == item.id)
             }
 
             if let item = currentImage {
                 handle(for: item)
                 deleteBadge(for: item)
             }
+        }
+        // Zoomer ou faire defiler abandonne un deplacement en cours : le
+        // brouillon est en coordonnees d'ecran, il ne veut plus rien dire.
+        .onChange(of: viewport) { _, _ in
+            draft = nil
+            lastTranslation = .zero
         }
     }
 
@@ -61,7 +69,6 @@ struct ImagesLayer: View {
     private func moveGesture(_ item: PageImage) -> some Gesture {
         DragGesture(minimumDistance: 6)
             .onChanged { value in
-                if selected != item.id { selected = item.id; draft = nil }
                 let base = draft ?? onScreen(item)
                 let dx = value.translation.width - lastTranslation.width
                 let dy = value.translation.height - lastTranslation.height

@@ -67,7 +67,6 @@ struct PaperBackdrop: View {
                               height: pageSize.height * viewport.zoom)
             guard page.intersects(bounds) else { return }
             context.fill(Path(page), with: .color(paper))
-
             context.clip(to: Path(page.intersection(bounds)))
 
             if let backdrop {
@@ -84,51 +83,56 @@ struct PaperBackdrop: View {
                     )
                     context.draw(Image(decorative: tile.image, scale: 1), in: target)
                 }
-                return
+            } else {
+                drawRules(context: &context, page: page, size: size)
             }
-            // Les images posees viennent au-dessus du papier, sous l'ecriture.
+
+            // EN DERNIER : une image posee couvre le papier. Les lignes qui
+            // lui passaient dessus la faisaient ressembler a un brouillon.
             for item in placed {
                 let target = Self.placement(
                     image: CGSize(width: item.image.width, height: item.image.height),
                     box: item.box, in: page)
                 context.draw(Image(decorative: item.image, scale: 1), in: target)
             }
+        }
+    }
 
-            guard template != .blank else { return }
+    /// Le reglage du papier : lignes, quadrillage, points, marge.
+    private func drawRules(context: inout GraphicsContext, page: CGRect, size: CGSize) {
+        guard template != .blank else { return }
+        let step = lineSpacing * viewport.zoom
+        guard step > 4 else { return }   // trop serré pour vouloir dire quelque chose
 
-            let step = lineSpacing * viewport.zoom
-            guard step > 4 else { return }   // trop serré pour vouloir dire quelque chose
-
-            if template == .dotted {
-                for y in ticks(from: page.minY, step: step, limit: page.maxY, visible: 0...size.height) {
-                    for x in ticks(from: page.minX, step: step, limit: page.maxX, visible: 0...size.width) {
-                        context.fill(Path(ellipseIn: CGRect(x: x - 1, y: y - 1, width: 2, height: 2)),
-                                     with: .color(rule))
-                    }
-                }
-                return
-            }
-
-            var lines = Path()
+        if template == .dotted {
             for y in ticks(from: page.minY, step: step, limit: page.maxY, visible: 0...size.height) {
-                lines.move(to: CGPoint(x: page.minX, y: y))
-                lines.addLine(to: CGPoint(x: page.maxX, y: y))
-            }
-            if template == .grid {
                 for x in ticks(from: page.minX, step: step, limit: page.maxX, visible: 0...size.width) {
-                    lines.move(to: CGPoint(x: x, y: page.minY))
-                    lines.addLine(to: CGPoint(x: x, y: page.maxY))
+                    context.fill(Path(ellipseIn: CGRect(x: x - 1, y: y - 1, width: 2, height: 2)),
+                                 with: .color(rule))
                 }
             }
-            context.stroke(lines, with: .color(rule), lineWidth: 1)
+            return
+        }
 
-            if template == .ruled {
-                let x = page.minX + marginX * viewport.zoom
-                var m = Path()
-                m.move(to: CGPoint(x: x, y: page.minY))
-                m.addLine(to: CGPoint(x: x, y: page.maxY))
-                context.stroke(m, with: .color(margin), lineWidth: 1.5)
+        var lines = Path()
+        for y in ticks(from: page.minY, step: step, limit: page.maxY, visible: 0...size.height) {
+            lines.move(to: CGPoint(x: page.minX, y: y))
+            lines.addLine(to: CGPoint(x: page.maxX, y: y))
+        }
+        if template == .grid {
+            for x in ticks(from: page.minX, step: step, limit: page.maxX, visible: 0...size.width) {
+                lines.move(to: CGPoint(x: x, y: page.minY))
+                lines.addLine(to: CGPoint(x: x, y: page.maxY))
             }
+        }
+        context.stroke(lines, with: .color(rule), lineWidth: 1)
+
+        if template == .ruled {
+            let x = page.minX + marginX * viewport.zoom
+            var m = Path()
+            m.move(to: CGPoint(x: x, y: page.minY))
+            m.addLine(to: CGPoint(x: x, y: page.maxY))
+            context.stroke(m, with: .color(margin), lineWidth: 1.5)
         }
     }
 
