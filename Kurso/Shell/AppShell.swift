@@ -22,6 +22,8 @@ struct AppShell: View {
     /// Le rail se replie : sur un iPad en portrait, cent points de moins
     /// changent tout pour ecrire.
     @State private var railShown = true
+    /// Les cartes d'un sprint de fin de cours, en attente d'etre affrontees.
+    @State private var sprintCards: [UUID]?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -70,9 +72,14 @@ struct AppShell: View {
                 tab = .notebooks
             }
         case .notebooks:
-            LibraryView(pageToOpen: $pageToOpen)
+            LibraryView(pageToOpen: $pageToOpen) { ids in
+                sprintCards = ids
+                tab = .review
+            }
         case .review:
-            ReviewSessionView()
+            ReviewSessionView(sprintCardIDs: sprintCards)
+                .id(sprintCards?.first)
+                .onDisappear { sprintCards = nil }
         case .memory:
             MemoryMapView()
         case .cards:

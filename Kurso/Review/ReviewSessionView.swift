@@ -6,6 +6,9 @@ import PencilKit
 
 /// L'ecran de session — l'onglet REVISER.
 struct ReviewSessionView: View {
+    /// Les cartes d'un sprint de fin de cours. Nil : session ordinaire.
+    var sprintCardIDs: [UUID]?
+
     @Environment(\.modelContext) private var context
     @Query private var allCards: [Card]
 
@@ -270,7 +273,12 @@ struct ReviewSessionView: View {
     // MARK: Donnees
 
     private var dueCards: [Card] {
-        allCards.filter { $0.dueAt <= .now }.sorted { $0.dueAt < $1.dueAt }
+        // Un sprint ne revise que ce qu'on vient d'ecrire, pas tout l'arriere.
+        if let sprintCardIDs {
+            let wanted = Set(sprintCardIDs)
+            return allCards.filter { wanted.contains($0.id) }
+        }
+        return allCards.filter { $0.dueAt <= .now }.sorted { $0.dueAt < $1.dueAt }
     }
 
     /// Toutes les cartes du carnet, dues ou non : on vient les affronter.
@@ -332,7 +340,7 @@ struct ReviewSessionView: View {
         card.isInMistakeBook = SpacedRepetition.isInMistakeBook(state)
         card.dueAt = SpacedRepetition.dueDate(from: state)
 
-        let gained = session.answer(answer)
+        let gained = session.answer(answer, isSprint: sprintCardIDs != nil)
         DailyActivityStore.record(.reviewCards, context: context)
         if let player {
             player.xp += gained

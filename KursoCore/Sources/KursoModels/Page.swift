@@ -12,6 +12,10 @@ import SwiftData
     /// Rang dans son cahier. L'etudiant decide de l'ordre DANS une matiere :
     /// une page ecrite, deux diapos, une photo, puis la suite du cours.
     public var position: Double = 0
+    /// Quand le sprint de fin de cours a ete propose pour cette page. On ne
+    /// le propose qu'une fois : revenir sur ses notes n'est pas une fin de
+    /// seance.
+    public var sprintProposedAt: Date?
     /// Photo posee en fond de page. Hors de la base : une image n'a rien a
     /// faire dans un enregistrement SwiftData (§1).
     @Attribute(.externalStorage) public var photo: Data?

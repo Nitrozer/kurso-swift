@@ -17,6 +17,8 @@ enum CahierSelection: Hashable {
 struct LibraryView: View {
     /// Page demandee depuis un autre ecran — l'accueil ouvre le cahier du cours.
     var pageToOpen: Binding<Page?>? = nil
+    /// Lance un sprint de fin de cours sur ces cartes.
+    var onStartSprint: ([UUID]) -> Void = { _ in }
 
     @Environment(\.modelContext) private var context
     @Query(sort: \Course.name) private var courses: [Course]
@@ -38,6 +40,8 @@ struct LibraryView: View {
     @State private var exported: ExportedFile?
     @State private var pendingPDF: PickedPDF?
     @State private var exportProgress: Double?
+    /// La page dont la seance vient de finir, et ses cartes proposees.
+    @State private var sprintFor: Page?
     /// Ou deposer les diapos qu'on est en train de choisir.
     @State private var insertionBounds: (after: Double?, before: Double?) = (nil, nil)
     @State private var pickedPhoto: PhotosPickerItem?
@@ -59,6 +63,9 @@ struct LibraryView: View {
                    let first = courses.first {
                     openedCourse = first
                     openFirst(of: first)
+                }
+                if ProcessInfo.processInfo.arguments.contains("-simulateSprint") {
+                    sprintFor = pages.first { $0.sessionEnd != nil && $0.sprintProposedAt == nil }
                 }
                 if ProcessInfo.processInfo.arguments.contains("-simulateRemoval") {
                     isImporting = true
@@ -165,10 +172,29 @@ struct LibraryView: View {
     #endif
 
     private func closeCahier() {
+        #if os(iOS)
+        // Fin de seance : c'est le moment de proposer trois cartes, pas
+        // pendant qu'on ecrit.
+        if let page = openedPage, shouldPropose(for: page) {
+            sprintFor = page
+            return
+        }
+        #endif
         openedPage = nil
         openedCourse = nil
         showsLoose = false
     }
+
+    #if os(iOS)
+    /// Le cours vient-il de finir, avec de quoi proposer ?
+    private func shouldPropose(for page: Page) -> Bool {
+        guard page.sprintProposedAt == nil,
+              let end = page.sessionEnd else { return false }
+        let since = Date.now.timeIntervalSince(end)
+        guard since >= 0, since < 45 * 60 else { return false }
+        return !CardProposer.propose(from: page.recognizedText ?? "").isEmpty
+    }
+    #endif
 
     private var library: some View {
         VStack(spacing: 0) {
@@ -198,6 +224,31 @@ struct LibraryView: View {
         }
         #if os(iOS)
         .overlay { ExportProgress(value: exportProgress) }
+        #endif
+        #if os(iOS)
+        .fullScreenCover(item: $sprintFor) { page in
+            SprintPromptView(
+                page: page,
+                proposals: CardProposer.propose(from: page.recognizedText ?? ""),
+                onStart: { cards in
+                    page.sprintProposedAt = .now
+                    try? context.save()
+                    sprintFor = nil
+                    openedPage = nil
+                    openedCourse = nil
+                    showsLoose = false
+                    onStartSprint(cards.map(\.id))
+                },
+                onSkip: {
+                    page.sprintProposedAt = .now
+                    try? context.save()
+                    sprintFor = nil
+                    openedPage = nil
+                    openedCourse = nil
+                    showsLoose = false
+                }
+            )
+        }
         #endif
         .sheet(isPresented: $isImporting) {
             TimetableOnboardingView()

@@ -92,6 +92,20 @@ enum DebugSeed {
             }
         }
 
+        // Une page dont la seance vient de finir, avec de quoi proposer.
+        let justFinished = Page(title: "Tas binaires", createdAt: .now)
+        justFinished.titleWasEdited = true
+        justFinished.course = course
+        justFinished.sessionEnd = Date().addingTimeInterval(-300)
+        justFinished.recognizedText = """
+        Tas binaires
+        Tas binaire : arbre presque complet ou chaque parent domine ses enfants
+        Hauteur = ⌊log₂ n⌋
+        Insertion → O(log n) par remontee
+        on remonte l'element tant que le parent est plus grand, ce qui donne la borne
+        """
+        context.insert(justFinished)
+
         let player = PlayerState()
         player.xp = 320
         player.level = 7
