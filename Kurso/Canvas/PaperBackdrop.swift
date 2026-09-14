@@ -1,4 +1,5 @@
 import SwiftUI
+import KursoCore
 
 /// Le fond de la page : papier reglé, ou la diapo d'un PDF.
 ///
@@ -36,6 +37,8 @@ struct PaperBackdrop: View {
     /// La zone visible, rendue plus finement. L'image de base reste dessous :
     /// une tuile en retard laisse voir une diapo floue, jamais un trou.
     var backdropTile: Tile?
+    /// Ou l'image est posee, en fractions de page. Nil : pleine largeur, en haut.
+    var backdropBox: CGRect?
 
     private let lineSpacing: CGFloat = 32
     private let marginX: CGFloat = 96
@@ -59,8 +62,9 @@ struct PaperBackdrop: View {
             context.clip(to: Path(page.intersection(bounds)))
 
             if let backdrop {
-                let fitted = Self.fitted(CGSize(width: backdrop.width, height: backdrop.height),
-                                         into: page)
+                let fitted = Self.placement(
+                    image: CGSize(width: backdrop.width, height: backdrop.height),
+                    box: backdropBox, in: page)
                 context.draw(Image(decorative: backdrop, scale: 1), in: fitted)
                 if let tile = backdropTile {
                     let target = CGRect(
@@ -126,11 +130,12 @@ struct PaperBackdrop: View {
         return out
     }
 
+    static func placement(image: CGSize, box: CGRect?, in pageRect: CGRect) -> CGRect {
+        ImagePlacement.placement(image: image, box: box, in: pageRect)
+    }
+
     static func fitted(_ size: CGSize, into rect: CGRect) -> CGRect {
-        guard size.width > 0, size.height > 0 else { return rect }
-        let scale = min(rect.width / size.width, rect.height / size.height)
-        let w = size.width * scale, h = size.height * scale
-        return CGRect(x: rect.midX - w / 2, y: rect.minY, width: w, height: h)
+        ImagePlacement.fitted(size, into: rect)
     }
 }
 

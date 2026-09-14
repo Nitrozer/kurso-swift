@@ -9,7 +9,7 @@ public enum CardKind: String, Codable, Sendable {
 }
 
 /// Un rectangle enregistrable par SwiftData.
-public struct OcclusionBox: Codable, Hashable, Sendable {
+public struct StoredRect: Codable, Hashable, Sendable {
     public var x: Double
     public var y: Double
     public var width: Double
@@ -19,6 +19,9 @@ public struct OcclusionBox: Codable, Hashable, Sendable {
         self.x = x; self.y = y; self.width = width; self.height = height
     }
 }
+
+/// Ancien nom, garde pour ne rien casser.
+public typealias OcclusionBox = StoredRect
 
 @Model public final class Card {
     public var id: UUID = UUID()
@@ -35,7 +38,7 @@ public struct OcclusionBox: Codable, Hashable, Sendable {
     /// celui-ci s'encode en tableau `[x, y, w, h]`, un conteneur non cle, et
     /// SwiftData en exige un cle — il plantait a l'enregistrement avec
     /// « Composite Coder only supports Keyed Container ».
-    public var occlusion: OcclusionBox?
+    public var occlusion: StoredRect?
     /// Lignes du markdown d'ou vient la carte.
     ///
     /// Deux entiers, jamais un Range : comme CGRect, un Range s'encode en
@@ -82,7 +85,7 @@ public struct OcclusionBox: Codable, Hashable, Sendable {
         }
         set {
             occlusion = newValue.map {
-                OcclusionBox(x: $0.minX, y: $0.minY, width: $0.width, height: $0.height)
+                StoredRect(x: $0.minX, y: $0.minY, width: $0.width, height: $0.height)
             }
         }
     }

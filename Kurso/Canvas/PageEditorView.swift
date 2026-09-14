@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import PhotosUI
+import UniformTypeIdentifiers
 import PencilKit
 import KursoCore
 import KursoModels
@@ -38,6 +39,9 @@ struct PageEditorView: View {
     @State private var isCapturingRegion = false
     @State private var pendingImage: CGImage?
     @State private var pickedPhoto: PhotosPickerItem?
+    @State private var isPickingPDF = false
+    @State private var pendingPDF: PickedPDF?
+    @State private var isAdjustingPhoto = false
     @State private var exported: ExportedFile?
     #endif
     #if os(iOS)
@@ -82,7 +86,8 @@ struct PageEditorView: View {
                     pageSize: CGSize(width: DrawingCanvas.pageWidth,
                                      height: DrawingCanvas.pageHeight),
                     backdrop: backdropImage,
-                    backdropTile: backdropTile
+                    backdropTile: backdropTile,
+                    backdropBox: page.photoRect
                 )
                 DrawingCanvas(
                 drawing: $drawing,
@@ -100,8 +105,17 @@ struct PageEditorView: View {
                         page: page,
                         pageIndex: index,
                         viewport: viewport,
-                        slideImage: backdropImage
+                        slideImage: backdropImage,
+                        slideBox: page.photoRect
                     ) { isMasking = false }
+                }
+                if isAdjustingPhoto, let source = backdropImage {
+                    PhotoAdjustLayer(
+                        current: photoFrameOnScreen(source),
+                        onChange: { rect in savePhotoFrame(rect) },
+                        onReset: { page.photoRect = nil; try? context.save() },
+                        onDone: { isAdjustingPhoto = false }
+                    )
                 }
                 if isCapturingRegion {
                     RegionCaptureLayer(
@@ -199,6 +213,24 @@ struct PageEditorView: View {
         #endif
         #if os(iOS)
         .sheet(item: $exported) { ShareSheet(url: $0.url) }
+        .fileImporter(isPresented: $isPickingPDF, allowedContentTypes: [.pdf]) { result in
+            guard case .success(let url) = result else { return }
+            pendingPDF = PickedPDF(url: url)
+        }
+        .sheet(item: $pendingPDF) { picked in
+            PDFPagePicker(
+                url: picked.url,
+                onCancel: { pendingPDF = nil },
+                onConfirm: { chosen in
+                    // Les diapos rejoignent la matiere de la note ouverte.
+                    let created = try? PDFImporter.importFile(
+                        at: picked.url, course: page.course,
+                        selected: chosen, context: context)
+                    pendingPDF = nil
+                    if let first = created?.first { onOpenSlide(first) }
+                }
+            )
+        }
         #endif
         .onDisappear {
             persist()
@@ -247,7 +279,9 @@ struct PageEditorView: View {
             }
             #if os(iOS)
             exportButton
+            addPDFButton
             photoButton
+            adjustPhotoButton
             #endif
             coursePicker
             slideNav
@@ -349,6 +383,59 @@ struct PageEditorView: View {
     private var hasBackdrop: Bool { page.pdfAssetID != nil || page.photo != nil }
 
     #if os(iOS)
+    @ViewBuilder private var adjustPhotoButton: some View {
+        if page.photo != nil {
+            Button { isAdjustingPhoto.toggle() } label: {
+                Text(isAdjustingPhoto ? "Terminer" : "Régler l'image")
+                    .font(KFont.body(12, weight: .extraBold))
+                    .foregroundStyle(isAdjustingPhoto ? K.paperAlt : K.ink)
+                    .padding(.horizontal, 13).padding(.vertical, 7)
+                    .background(isAdjustingPhoto ? K.brand : .clear, in: Capsule())
+                    .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// Le cadre de l'image, tel qu'il tombe a l'ecran.
+    private func photoFrameOnScreen(_ source: CGImage) -> CGRect {
+        PaperBackdrop.placement(
+            image: CGSize(width: source.width, height: source.height),
+            box: page.photoRect, in: pageRectOnScreen)
+    }
+
+    private var pageRectOnScreen: CGRect {
+        CGRect(x: -viewport.offset.x, y: -viewport.offset.y,
+               width: PaperBackdrop.pageWidth * viewport.zoom,
+               height: PaperBackdrop.pageHeight * viewport.zoom)
+    }
+
+    /// Repasse du repere ecran aux fractions de page, seules stables au zoom.
+    private func savePhotoFrame(_ rect: CGRect) {
+        let pageRect = pageRectOnScreen
+        guard pageRect.width > 0, pageRect.height > 0 else { return }
+        page.photoRect = CGRect(x: (rect.minX - pageRect.minX) / pageRect.width,
+                                y: (rect.minY - pageRect.minY) / pageRect.height,
+                                width: rect.width / pageRect.width,
+                                height: rect.height / pageRect.height)
+        try? context.save()
+    }
+
+    /// Deposer des diapos dans le meme cahier que cette note.
+    ///
+    /// Un cahier melange l'ecrit et le polycopie : c'est comme ca qu'on
+    /// travaille en cours, pas en separant les deux.
+    private var addPDFButton: some View {
+        Button { isPickingPDF = true } label: {
+            Text("Ajouter un PDF")
+                .font(KFont.body(12, weight: .extraBold))
+                .foregroundStyle(K.ink)
+                .padding(.horizontal, 13).padding(.vertical, 7)
+                .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
+        }
+        .buttonStyle(.plain)
+    }
+
     private var exportButton: some View {
         Button {
             PDFAssetLookup.remember(assets)
@@ -435,8 +522,9 @@ struct PageEditorView: View {
             ctx.fill(CGRect(origin: .zero, size: size))
 
             if let source = backdropImage {
-                let fitted = PaperBackdrop.fitted(
-                    CGSize(width: source.width, height: source.height), into: pageRect)
+                let fitted = PaperBackdrop.placement(
+                    image: CGSize(width: source.width, height: source.height),
+                    box: page.photoRect, in: pageRect)
                 let visible = fitted.intersection(screenRect)
                 if !visible.isNull, fitted.width > 0, fitted.height > 0 {
                     let crop = CGRect(x: (visible.minX - fitted.minX) / fitted.width,
@@ -567,7 +655,9 @@ struct PageEditorView: View {
         let page = CGRect(x: -viewport.offset.x, y: -viewport.offset.y,
                           width: DrawingCanvas.pageWidth * viewport.zoom,
                           height: DrawingCanvas.pageHeight * viewport.zoom)
-        let fitted = PaperBackdrop.fitted(CGSize(width: base.width, height: base.height), into: page)
+        let fitted = PaperBackdrop.placement(
+            image: CGSize(width: base.width, height: base.height),
+            box: self.page.photoRect, in: page)
         let visible = fitted.intersection(CGRect(origin: .zero, size: viewport.size))
         guard !visible.isNull, visible.width > 8, visible.height > 8 else { return }
 

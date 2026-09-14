@@ -21,6 +21,8 @@ struct OcclusionLayer: View {
     /// La diapo rendue : sa taille sert au reperage, son image part avec la
     /// carte pour qu'on puisse reviser sans rouvrir le PDF.
     let slideImage: CGImage?
+    /// Ou l'image est posee, si l'etudiant l'a redimensionnee.
+    let slideBox: CGRect?
     var onFinish: () -> Void
 
     @Environment(\.modelContext) private var context
@@ -149,8 +151,9 @@ struct OcclusionLayer: View {
                               width: PaperBackdrop.pageWidth * viewport.zoom,
                               height: PaperBackdrop.pageHeight * viewport.zoom)
         guard let slideImage else { return pageRect }
-        return PaperBackdrop.fitted(
-            CGSize(width: slideImage.width, height: slideImage.height), into: pageRect)
+        return PaperBackdrop.placement(
+            image: CGSize(width: slideImage.width, height: slideImage.height),
+            box: slideBox, in: pageRect)
     }
 
     private func toScreen(_ fraction: CGRect) -> CGRect {

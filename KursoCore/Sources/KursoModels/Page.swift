@@ -12,6 +12,19 @@ import SwiftData
     /// Photo posee en fond de page. Hors de la base : une image n'a rien a
     /// faire dans un enregistrement SwiftData (§1).
     @Attribute(.externalStorage) public var photo: Data?
+    /// Ou la photo est posee, en fractions de la page. Nil : elle occupe
+    /// toute la largeur, en haut. C'est ce qui permet de la redimensionner.
+    public var photoBox: StoredRect?
+
+    /// Vue pratique sur `photoBox`.
+    public var photoRect: CGRect? {
+        get { photoBox.map { CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height) } }
+        set {
+            photoBox = newValue.map {
+                StoredRect(x: $0.minX, y: $0.minY, width: $0.width, height: $0.height)
+            }
+        }
+    }
     public var createdAt: Date = Date()
     /// Fin du creneau de cours, si la page est rattachee.
     public var sessionEnd: Date?

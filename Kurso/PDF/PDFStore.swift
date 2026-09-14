@@ -43,8 +43,18 @@ enum PDFStore {
     /// CoreGraphics directement plutot qu'un moteur de rendu par plateforme :
     /// le meme code sert sur iPad et sur Mac, sans garde de compilation.
     static func render(fileName: String, pageIndex: Int, width: CGFloat) -> CGImage? {
+        render(document: document(fileName: fileName), pageIndex: pageIndex, width: width)
+    }
+
+    /// Meme rendu, depuis un fichier qui n'est pas encore depose : c'est ce
+    /// qui sert a montrer les apercus avant de choisir les pages a garder.
+    static func render(at url: URL, pageIndex: Int, width: CGFloat) -> CGImage? {
+        render(document: PDFDocument(url: url), pageIndex: pageIndex, width: width)
+    }
+
+    private static func render(document: PDFDocument?, pageIndex: Int, width: CGFloat) -> CGImage? {
         guard width > 0,
-              let document = document(fileName: fileName),
+              let document,
               pageIndex >= 0, pageIndex < document.pageCount,
               let page = document.page(at: pageIndex)
         else { return nil }

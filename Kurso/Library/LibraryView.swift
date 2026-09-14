@@ -31,6 +31,7 @@ struct LibraryView: View {
     @State private var pageToDelete: Page?
     #if os(iOS)
     @State private var exported: ExportedFile?
+    @State private var pendingPDF: PickedPDF?
     #endif
     @FocusState private var isSearching: Bool
 
@@ -40,6 +41,9 @@ struct LibraryView: View {
                 #if DEBUG
                 // Rejoue un import de PDF, pour voir ce qu'il cree vraiment.
                 #if os(iOS)
+                if ProcessInfo.processInfo.arguments.contains("-simulatePicker") {
+                    pendingPDF = PickedPDF(url: URL(filePath: "/tmp/Cours de maths.pdf"))
+                }
                 if ProcessInfo.processInfo.arguments.contains("-simulateExport") {
                     PDFAssetLookup.remember(assets)
                     if let url = PageExporter.write(exportablePages, fallbackName: "Essai") {
@@ -110,9 +114,26 @@ struct LibraryView: View {
         }
         .fileImporter(isPresented: $isPickingPDF, allowedContentTypes: [.pdf]) { result in
             guard case .success(let url) = result else { return }
-            let pages = try? PDFImporter.importFile(at: url, course: selectedCourse, context: context)
-            openedPage = pages?.first
+            #if os(iOS)
+            // On ne depose rien avant d'avoir demande quelles pages garder.
+            pendingPDF = PickedPDF(url: url)
+            #endif
         }
+        #if os(iOS)
+        .sheet(item: $pendingPDF) { picked in
+            PDFPagePicker(
+                url: picked.url,
+                onCancel: { pendingPDF = nil },
+                onConfirm: { chosen in
+                    let created = try? PDFImporter.importFile(
+                        at: picked.url, course: selectedCourse,
+                        selected: chosen, context: context)
+                    pendingPDF = nil
+                    openedPage = created?.first
+                }
+            )
+        }
+        #endif
     }
 
     /// Tant qu'aucun emploi du temps n'est importe, les pages ne peuvent pas se
