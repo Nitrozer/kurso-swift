@@ -15,6 +15,17 @@ public enum TaskDetector {
         "rendu", "DM", "TD", "TP",
     ]
 
+    /// Marqueurs qui NOMMENT la chose a faire : eux seuls peuvent servir de
+    /// titre quand la ligne ne dit rien d'autre.
+    ///
+    /// « Partiel le 12 décembre » est un devoir complet. « À rendre le 15 »
+    /// n'en est pas un : a rendre quoi ? Mieux vaut ne rien proposer que
+    /// creer une tache dont le titre ne veut rien dire.
+    public static let nounMarkers: Set<String> = [
+        "devoir", "exposé", "expose", "partiel", "contrôle", "controle",
+        "rendu", "DM", "TD", "TP",
+    ]
+
     /// Heure retenue quand la ligne ne dit pas d'heure.
     public static let defaultHour = 18
 
@@ -57,8 +68,15 @@ public enum TaskDetector {
                 due = calendar.date(bySettingHour: defaultHour, minute: 0, second: 0, of: due) ?? due
             }
 
-            let title = cleanTitle(line, removing: [matchRange], marker: marker)
-            guard !title.isEmpty else { continue }
+            // « Partiel le 12 décembre » ne laisse rien apres qu'on ait retire
+            // la date et le marqueur. C'est pourtant un devoir : son titre,
+            // c'est le marqueur. Exiger autre chose faisait perdre toutes les
+            // lignes qui vont droit au but.
+            let cleaned = cleanTitle(line, removing: [matchRange], marker: marker)
+            guard let title = cleaned.isEmpty
+                    ? (nounMarkers.contains(marker) ? marker.capitalized : nil)
+                    : cleaned
+            else { continue }
 
             proposals.append(Proposal(title: title, dueAt: due, marker: marker, lineIndex: index))
         }

@@ -99,6 +99,8 @@ enum DebugSeed {
         justFinished.sessionEnd = Date().addingTimeInterval(-300)
         justFinished.recognizedText = """
         Tas binaires
+        TD à rendre pour jeudi 30
+        partiel le 12 décembre
         Tas binaire : arbre presque complet ou chaque parent domine ses enfants
         Hauteur = ⌊log₂ n⌋
         Insertion → O(log n) par remontee

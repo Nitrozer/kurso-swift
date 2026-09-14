@@ -81,3 +81,37 @@ struct TaskDetectorTests {
         #expect(TaskDetector.detect(in: "à rendre le 15 octobre").isEmpty)
     }
 }
+
+@Suite("Detection — phrases reelles d'etudiant")
+struct TaskDetectorRealLifeTests {
+    private let cal = Calendar(identifier: .gregorian)
+
+    private func titles(_ text: String) -> [String] {
+        TaskDetector.detect(in: text, calendar: cal).map(\.title)
+    }
+
+    @Test("« TD à rendre pour jeudi 30 »")
+    func tdARendre() {
+        #expect(!titles("TD à rendre pour jeudi 30").isEmpty)
+    }
+
+    @Test("Variantes courantes de prise de notes")
+    func commonPhrasings() {
+        #expect(!titles("DM d'automatique pour le 15 octobre").isEmpty)
+        #expect(!titles("exposé à faire pour mardi").isEmpty)
+        #expect(!titles("partiel le 12 décembre").isEmpty)
+    }
+
+    @Test("Un marqueur qui nomme la chose fait titre ; un autre non")
+    func bareMarkerKeepsTitle() {
+        // « a rendre » ne nomme rien : la ligne reste sans proposition.
+        #expect(titles("à rendre le 15 octobre").isEmpty)
+        #expect(titles("partiel le 12 décembre") == ["Partiel"])
+        #expect(titles("DM pour le 15 octobre") == ["DM"])
+    }
+
+    @Test("Une phrase de cours sans echeance ne propose rien")
+    func proseIsIgnored() {
+        #expect(titles("le TD montre que la complexite est logarithmique").isEmpty)
+    }
+}
