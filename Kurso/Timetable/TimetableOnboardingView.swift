@@ -20,6 +20,7 @@ struct TimetableOnboardingView: View {
     @Query private var timetables: [Timetable]
 
     @State private var isReplacing = false
+    @State private var courseToRemove: Course?
     @State private var url = ""
     @State private var proposals: [TimetableImporter.Proposal] = []
     @State private var events: [ICSEvent] = []
@@ -41,6 +42,59 @@ struct TimetableOnboardingView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(K.paper)
+        .task {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-simulateRemoval") {
+                try? await Task.sleep(for: .seconds(2))
+                simulateRemoval()
+            }
+            #endif
+        }
+        .confirmationDialog(
+            "Retirer cette matière ?",
+            isPresented: Binding(get: { courseToRemove != nil },
+                                 set: { if !$0 { courseToRemove = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Retirer", role: .destructive) { remove() }
+            Button("Annuler", role: .cancel) { courseToRemove = nil }
+        } message: {
+            Text(removalWarning)
+        }
+    }
+
+    #if DEBUG
+    /// Rejoue la suppression d'une matiere, pour verifier que rien ne se perd.
+    private func simulateRemoval() {
+        let before = (try? context.fetch(FetchDescriptor<Page>()))?.count ?? -1
+        guard let first = courses.first else { print("[MATIERE] aucune"); return }
+        let owned = (first.pages ?? []).count
+        courseToRemove = first
+        remove()
+        let after = (try? context.fetch(FetchDescriptor<Page>()))?.count ?? -1
+        let orphans = ((try? context.fetch(FetchDescriptor<Page>())) ?? []).filter { $0.course == nil }.count
+        print("[MATIERE] retiree avec \(owned) pages · total avant=\(before) apres=\(after) · sans matiere=\(orphans)")
+    }
+    #endif
+
+    private var removalWarning: String {
+        guard let course = courseToRemove else { return "" }
+        let count = (course.pages ?? []).count
+        guard count > 0 else { return "Ses créneaux disparaissent de l'emploi du temps." }
+        return "Ses \(count) page\(count > 1 ? "s" : "") \(count > 1 ? "sont conservées" : "est conservée") dans « Sans matière ». Seuls les créneaux disparaissent."
+    }
+
+    /// Retirer une matiere ne doit JAMAIS emporter ce qu'on y a ecrit.
+    ///
+    /// Course supprime ses pages en cascade : on les detache d'abord, sinon
+    /// une matiere retiree par erreur effacerait des heures de notes.
+    private func remove() {
+        guard let course = courseToRemove else { return }
+        for page in course.pages ?? [] { page.course = nil }
+        try? context.save()
+        context.delete(course)
+        try? context.save()
+        courseToRemove = nil
     }
 
     private var header: some View {
@@ -129,6 +183,19 @@ struct TimetableOnboardingView: View {
                 MetaText(courseSubtitle(course))
             }
             Spacer(minLength: 0)
+
+            // Une matiere importee par erreur — « Travail en autonomie », un
+            // creneau qu'on ne suit pas — doit pouvoir partir.
+            Button { courseToRemove = course } label: {
+                CrossGlyph()
+                    .stroke(K.ink, style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
+                    .frame(width: 11, height: 11)
+                    .frame(width: 30, height: 30)
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(K.ink.opacity(0.3), lineWidth: 2))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Retirer \(course.name)")
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -60,6 +60,9 @@ struct LibraryView: View {
                     openedCourse = first
                     openFirst(of: first)
                 }
+                if ProcessInfo.processInfo.arguments.contains("-simulateRemoval") {
+                    isImporting = true
+                }
                 if ProcessInfo.processInfo.arguments.contains("-simulatePicker") {
                     pendingPDF = PickedPDF(url: URL(filePath: "/tmp/Cours de maths.pdf"))
                 }
