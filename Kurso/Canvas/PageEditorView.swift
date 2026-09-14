@@ -56,7 +56,8 @@ struct PageEditorView: View {
     @State private var audioNotice: String?
     /// Les images posees, decodees une fois.
     @State private var placed: [PaperBackdrop.Placed] = []
-    @State private var isArrangingImages = false
+    /// L'image touchee, s'il y en a une.
+    @State private var selectedImage: UUID?
     /// Une image ajoutee depuis le panneau, pas en fond de page.
     @State private var pickedPlaced: PhotosPickerItem?
     /// Le volet des cartes capturees. On l'enleve pour ecrire large.
@@ -140,10 +141,13 @@ struct PageEditorView: View {
                         onDone: { isAdjustingPhoto = false }
                     )
                 }
-                if isArrangingImages {
+                // Toujours active : seules les images repondent au doigt, le
+                // stylet ecrit par-dessus sans qu'on quitte quoi que ce soit.
+                if !(page.images ?? []).isEmpty {
                     ImagesLayer(
                         images: (page.images ?? []).sorted { $0.order < $1.order },
                         viewport: viewport,
+                        selected: $selectedImage,
                         onChange: { item, box in
                             item.rect = box
                             try? context.save()
@@ -153,8 +157,7 @@ struct PageEditorView: View {
                             context.delete(item)
                             try? context.save()
                             reloadPlaced()
-                        },
-                        onClose: { isArrangingImages = false }
+                        }
                     )
                 }
                 if isListening {
@@ -186,6 +189,23 @@ struct PageEditorView: View {
                     )
                 }
             }
+            // Le bouton vit AU BORD du volet, pas dans l'en-tete : on y va
+            // avec le pouce, sans traverser l'ecran.
+            Button { marginShown.toggle() } label: {
+                ChevronGlyph()
+                    .stroke(K.ink, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                    .frame(width: 9, height: 9)
+                    .rotationEffect(.degrees(marginShown ? 180 : 0))
+                    .frame(width: 26, height: 44)
+                    .background(K.paperAlt)
+                    .overlay(alignment: .leading) {
+                        Rectangle().fill(K.ink.opacity(0.12)).frame(width: 1)
+                    }
+            }
+            .buttonStyle(.plain)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .accessibilityLabel(marginShown ? "Cacher les cartes" : "Montrer les cartes")
+
             if marginShown {
                 TaskMargin(page: page)
                     .transition(.move(edge: .trailing))
@@ -325,11 +345,15 @@ struct PageEditorView: View {
         }
     }
 
+    /// L'en-tete : le titre, UNE action, et tout le reste range.
+    ///
+    /// Elle portait sept boutons cote a cote — audio, volet, papier, image,
+    /// matiere, export, mode — et devenait illisible des qu'on ouvrait le
+    /// panneau des pages. On ne garde a l'air libre que ce qui se decide sans
+    /// reflechir.
     private var header: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             Button {
-                // Enregistrer AVANT de fermer : onDisappear arrive trop tard,
-                // la vue est deja demontee et son canevas avec.
                 persist()
                 onClose()
             } label: {
@@ -343,10 +367,7 @@ struct PageEditorView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Retour aux pages")
 
-            VStack(alignment: .leading, spacing: 3) {
-                // Modifiable au clavier. Tant qu'on n'y touche pas, c'est la
-                // premiere ligne reconnue qui nomme la page (§4) — d'ou le
-                // drapeau, qui empeche la reconnaissance d'ecraser un choix.
+            VStack(alignment: .leading, spacing: 2) {
                 TextField("Page sans titre", text: Binding(
                     get: { page.title },
                     set: { newValue in
@@ -361,69 +382,46 @@ struct PageEditorView: View {
                 .onSubmit { titleFocused = false }
                 .font(KFont.display(19))
                 .foregroundStyle(K.ink)
-                .frame(minWidth: 120, idealWidth: 240, maxWidth: 320, alignment: .leading)
+                .frame(minWidth: 90, idealWidth: 200, maxWidth: 260, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
-                MetaText(page.createdAt.formatted(.dateTime.weekday(.wide).day().month(.wide)))
+
+                MetaText(subtitleLine, size: 9.5)
             }
-            coursePicker
+
             slideNav
-            Spacer()
+
+            Spacer(minLength: 8)
+
+            if loadFailed { unreadableBadge }
             #if os(iOS)
-            recordButton
-            marginToggle
+            if recorder.isRecording { recordingChip }
+            primaryAction
             pageMenu
             #endif
-            if loadFailed {
-                // Un dessin illisible ne doit jamais etre ecrase en silence (§8).
-                Text("DESSIN ILLISIBLE")
-                    .font(KFont.mono(10))
-                    .tracking(1.2)
-                    .foregroundStyle(K.paperAlt)
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 5)
-                    .background(K.alertBg, in: Capsule())
-                    .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
-            } else if !drawing.strokes.isEmpty && page.pdfAssetID == nil {
-                Button { isCapturing.toggle() } label: {
-                    Text(isCapturing ? "Annuler" : "Capturer une carte")
-                        .font(KFont.body(12, weight: .extraBold))
-                        .foregroundStyle(isCapturing ? K.paperAlt : K.ink)
-                        .padding(.horizontal, 13).padding(.vertical, 7)
-                        .background(isCapturing ? K.brand : .clear, in: Capsule())
-                        .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
-                }
-                .buttonStyle(.plain)
-            } else if hasBackdrop {
-                #if os(iOS)
-                Button { isCapturingRegion.toggle() } label: {
-                    Text(isCapturingRegion ? "Annuler" : "Capturer une image")
-                        .font(KFont.body(12, weight: .extraBold))
-                        .foregroundStyle(isCapturingRegion ? K.paperAlt : K.ink)
-                        .padding(.horizontal, 13).padding(.vertical, 7)
-                        .background(isCapturingRegion ? K.brand : .clear, in: Capsule())
-                        .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
-                }
-                .buttonStyle(.plain)
-                #endif
-                Button { isMasking.toggle() } label: {
-                    Text(isMasking ? "Terminer" : "Masquer pour réviser")
-                        .font(KFont.body(12, weight: .extraBold))
-                        .foregroundStyle(isMasking ? K.paperAlt : K.ink)
-                        .padding(.horizontal, 13).padding(.vertical, 7)
-                        .background(isMasking ? K.brand : .clear, in: Capsule())
-                        .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
-                }
-                .buttonStyle(.plain)
-            } else {
-                MetaText("\(displayedSeconds / 60) MIN D'ECRITURE")
-            }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 22)
         .padding(.vertical, 12)
-        .background(K.paper)
         .overlay(alignment: .bottom) {
-            Rectangle().fill(K.ink).frame(height: 3)
+            Rectangle().fill(K.ink.opacity(0.1)).frame(height: 1)
         }
+    }
+
+    /// La ligne sous le titre : la date, et la matiere quand il y en a une.
+    private var subtitleLine: String {
+        let day = page.createdAt.formatted(.dateTime.weekday(.wide).day().month(.wide))
+        guard let course = page.course else { return day.uppercased() }
+        return "\(day) · \(course.name)".uppercased()
+    }
+
+    private var unreadableBadge: some View {
+        // Un dessin illisible ne doit jamais etre ecrase en silence (§8).
+        Text("DESSIN ILLISIBLE")
+            .font(KFont.mono(10))
+            .tracking(1.2)
+            .foregroundStyle(K.paperAlt)
+            .padding(.horizontal, 11).padding(.vertical, 5)
+            .background(K.alertBg, in: Capsule())
+            .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
     }
 
     private var pdfAsset: PDFAsset? {
@@ -490,46 +488,6 @@ struct PageEditorView: View {
     }
 
     #if os(iOS)
-    /// Enregistrer le cours, ou l'arreter.
-    @ViewBuilder private var recordButton: some View {
-        if recorder.isRecording {
-            Button { finishRecording() } label: {
-                HStack(spacing: 7) {
-                    Circle().fill(K.endangered).frame(width: 9, height: 9)
-                    Text(AudioSync.clock(recorder.elapsed))
-                        .font(KFont.mono(11.5))
-                        .foregroundStyle(K.paperAlt)
-                }
-                .padding(.horizontal, 12).padding(.vertical, 7)
-                .background(K.ink, in: Capsule())
-            }
-            .buttonStyle(.plain)
-        } else {
-            Menu {
-                Button("Enregistrer le cours") { Task { await beginRecording() } }
-                if hasRecording {
-                    Button("Lire depuis le début") { playFromStart() }
-                    Button(isListening ? "Quitter l'écoute" : "Écouter en touchant un mot") {
-                        isListening.toggle()
-                        if !isListening { recorder.stopPlaying() }
-                    }
-                    Button("Arrêter la lecture") { recorder.stopPlaying() }
-                } else {
-                    Text("Aucun enregistrement sur cette page")
-                }
-            } label: {
-                Text("Audio")
-                    .font(KFont.body(12, weight: .extraBold))
-                    .foregroundStyle(isListening ? K.paperAlt : K.ink)
-                    .padding(.horizontal, 13).padding(.vertical, 7)
-                    .background(isListening ? K.brand : .clear, in: Capsule())
-                    .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-        }
-    }
-
     private var hasRecording: Bool { !(page.recordings ?? []).isEmpty }
 
     /// Les traits horodates de la page, prets pour l'ecoute.
@@ -615,7 +573,9 @@ struct PageEditorView: View {
         context.insert(made)
         try? context.save()
         reloadPlaced()
-        isArrangingImages = true
+        // Selectionnee d'emblee : on veut la regler tout de suite, comme
+        // partout ailleurs sur iPad.
+        selectedImage = made.id
     }
 
     /// Decode les images une fois : les relire a chaque image du zoom
@@ -635,33 +595,55 @@ struct PageEditorView: View {
         }) else { return }
         recorder.play(recording.fileName, from: AudioSync.playbackTime(for: mark))
     }
-
-    /// Montre ou cache le volet de droite.
-    private var marginToggle: some View {
-        Button { marginShown.toggle() } label: {
-            ChevronGlyph()
-                .stroke(K.ink, style: StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round))
-                .frame(width: 10, height: 10)
-                .rotationEffect(.degrees(marginShown ? 180 : 0))
-                .frame(width: 32, height: 30)
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(K.ink, lineWidth: 2.5))
+    #endif
+    #if os(iOS)
+    /// Pendant l'enregistrement, le chrono reste a l'air libre : c'est la
+    /// seule chose qu'on doit pouvoir arreter sans chercher.
+    private var recordingChip: some View {
+        Button { finishRecording() } label: {
+            HStack(spacing: 7) {
+                Circle().fill(K.endangered).frame(width: 9, height: 9)
+                Text(AudioSync.clock(recorder.elapsed))
+                    .font(KFont.mono(11.5))
+                    .foregroundStyle(K.paperAlt)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(K.ink, in: Capsule())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(marginShown ? "Cacher les cartes" : "Montrer les cartes")
+        .accessibilityLabel("Arrêter l'enregistrement")
     }
 
-    /// Les actions de la page, rangees : l'en-tete ne peut pas porter six
-    /// boutons a cote du panneau des pages.
+    /// UNE action, celle que la page appelle : masquer sur une diapo,
+    /// capturer une carte sur des notes manuscrites.
+    @ViewBuilder private var primaryAction: some View {
+        if hasBackdrop {
+            actionButton(isMasking ? "Terminer" : "Masquer pour réviser", isOn: isMasking) {
+                isMasking.toggle()
+            }
+        } else if !drawing.strokes.isEmpty {
+            actionButton(isCapturing ? "Annuler" : "Capturer une carte", isOn: isCapturing) {
+                isCapturing.toggle()
+            }
+        }
+    }
+
+    private func actionButton(_ title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(KFont.body(12.5, weight: .extraBold))
+                .foregroundStyle(isOn ? K.paperAlt : K.ink)
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(isOn ? K.brand : .clear, in: Capsule())
+                .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Tout le reste, range par famille. Un menu se parcourt ; sept boutons
+    /// cote a cote se subissent.
     private var pageMenu: some View {
         Menu {
-            Button("Exporter") { exportCurrent() }
-            Button("Ajouter une image") { isPickingPlaced = true }
-            if !(page.images ?? []).isEmpty {
-                Button(isArrangingImages ? "Terminer le placement" : "Déplacer les images") {
-                    isArrangingImages.toggle()
-                }
-            }
             Menu("Papier") {
                 ForEach(PaperKind.allCases, id: \.self) { kind in
                     Button(kind.label) {
@@ -670,26 +652,57 @@ struct PageEditorView: View {
                     }
                 }
             }
-            if page.photo == nil {
-                Button("Mettre une photo en fond") { isPickingPhotoForPage = true }
-            } else {
-                Button("Changer la photo") { isPickingPhotoForPage = true }
-                Button("Régler l'image") { isAdjustingPhoto = true }
+            Button("Ajouter une image") { isPickingPlaced = true }
+            if hasBackdrop {
+                Button(isCapturingRegion ? "Annuler la capture" : "Capturer un morceau") {
+                    isCapturingRegion.toggle()
+                }
             }
+
+            Divider()
+
+            Menu("Audio") {
+                if recorder.isRecording {
+                    Button("Arrêter l'enregistrement") { finishRecording() }
+                } else {
+                    Button("Enregistrer le cours") { Task { await beginRecording() } }
+                }
+                if hasRecording {
+                    Button("Lire depuis le début") { playFromStart() }
+                    Button(isListening ? "Quitter l'écoute" : "Écouter en touchant un mot") {
+                        isListening.toggle()
+                        if !isListening { recorder.stopPlaying() }
+                    }
+                    Button("Arrêter la lecture") { recorder.stopPlaying() }
+                }
+            }
+
+            Divider()
+
+            if !courses.isEmpty {
+                Menu("Matière") {
+                    ForEach(courses) { course in
+                        Button(course.name) { assignCourse(course) }
+                    }
+                    if page.course != nil {
+                        Divider()
+                        Button("Retirer la matière", role: .destructive) { assignCourse(nil) }
+                    }
+                }
+            }
+            Button("Exporter") { exportCurrent() }
         } label: {
             Text("···")
                 .font(KFont.body(15, weight: .extraBold))
                 .foregroundStyle(K.ink)
-                .frame(width: 36, height: 30)
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .frame(width: 36, height: 32)
+                .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
                     .strokeBorder(K.ink, lineWidth: 2.5))
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
         .photosPicker(isPresented: $isPickingPhotoForPage,
                       selection: $pickedPhoto, matching: .images)
-        .photosPicker(isPresented: $isPickingPlaced,
-                      selection: $pickedPlaced, matching: .images)
     }
 
     private func exportCurrent() {

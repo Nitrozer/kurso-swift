@@ -3,53 +3,63 @@ import SwiftUI
 import KursoCore
 import KursoModels
 
-/// Deplacer et retailler les images posees sur la page.
+/// Les images posees sur la page : on les touche, on les deplace, on les
+/// retaille. Sans mode a activer.
 ///
-/// Les cadres sont en fractions de page : ils tiennent donc au zoom, et le
-/// masquage comme la capture les retrouvent au meme endroit.
+/// La couche ne bloque RIEN : seuls les cadres des images repondent au doigt,
+/// tout le reste passe au canevas. C'est ce qui permet d'ecrire par-dessus une
+/// image sans avoir a quitter quoi que ce soit.
 struct ImagesLayer: View {
     let images: [PageImage]
     let viewport: PaperBackdrop.Viewport
+    @Binding var selected: UUID?
     var onChange: (PageImage, CGRect) -> Void
     var onDelete: (PageImage) -> Void
-    var onClose: () -> Void
 
-    @State private var selected: UUID?
     @State private var draft: CGRect?
     @State private var lastTranslation: CGSize = .zero
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            Color.black.opacity(0.08)
+            // Rien derriere : le stylet doit atteindre le canevas.
+            Color.clear.allowsHitTesting(false)
 
             ForEach(images, id: \.id) { item in
-                let frame = onScreen(item)
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(item.id == selected ? K.brand : K.ink.opacity(0.35),
-                                  style: StrokeStyle(lineWidth: item.id == selected ? 3 : 2,
-                                                     dash: [8, 5]))
+                let frame = (item.id == selected ? draft : nil) ?? onScreen(item)
+                ZStack(alignment: .topLeading) {
+                    if item.id == selected {
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .strokeBorder(K.brand, lineWidth: 2.5)
+                            .frame(width: max(frame.width, 1), height: max(frame.height, 1))
+                            .offset(x: frame.minX, y: frame.minY)
+                    }
+                }
+                .allowsHitTesting(false)
+
+                // Seule la surface de l'image repond au doigt.
+                Color.clear
                     .frame(width: max(frame.width, 1), height: max(frame.height, 1))
                     .offset(x: frame.minX, y: frame.minY)
                     .contentShape(Rectangle())
-                    .onTapGesture { selected = item.id; draft = nil }
+                    .onTapGesture { selected = (selected == item.id) ? nil : item.id }
                     .gesture(moveGesture(item))
             }
 
-            if let item = current {
+            if let item = currentImage {
                 handle(for: item)
+                deleteBadge(for: item)
             }
-
-            toolbar
         }
-        .contentShape(Rectangle())
     }
 
-    private var current: PageImage? {
+    private var currentImage: PageImage? {
         images.first { $0.id == selected }
     }
 
+    // MARK: Gestes
+
     private func moveGesture(_ item: PageImage) -> some Gesture {
-        DragGesture(minimumDistance: 4)
+        DragGesture(minimumDistance: 6)
             .onChanged { value in
                 if selected != item.id { selected = item.id; draft = nil }
                 let base = draft ?? onScreen(item)
@@ -64,13 +74,15 @@ struct ImagesLayer: View {
             }
     }
 
+    /// Poignee en bas a droite. Le rapport de forme est conserve : une image
+    /// etiree ne ressemble a rien.
     private func handle(for item: PageImage) -> some View {
         let frame = draft ?? onScreen(item)
         return Circle()
             .fill(K.paperAlt)
-            .overlay(Circle().strokeBorder(K.ink, lineWidth: 3))
-            .frame(width: 30, height: 30)
-            .offset(x: frame.maxX - 15, y: frame.maxY - 15)
+            .overlay(Circle().strokeBorder(K.brand, lineWidth: 3))
+            .frame(width: 26, height: 26)
+            .offset(x: frame.maxX - 13, y: frame.maxY - 13)
             .gesture(
                 DragGesture()
                     .onChanged { value in
@@ -84,27 +96,17 @@ struct ImagesLayer: View {
             )
     }
 
-    private var toolbar: some View {
-        VStack {
-            Spacer()
-            HStack(spacing: 10) {
-                if let item = current {
-                    Button("Supprimer l'image") { onDelete(item); selected = nil; draft = nil }
-                        .buttonStyle(StickerButtonStyle(kind: .secondary))
-                } else {
-                    Text("Touche une image pour la déplacer")
-                        .font(KFont.body(12.5, weight: .extraBold))
-                        .foregroundStyle(K.paperAlt)
-                        .padding(.horizontal, 14).padding(.vertical, 9)
-                        .background(K.ink, in: Capsule())
-                }
-                Button("Terminer") { onClose() }
-                    .buttonStyle(StickerButtonStyle(kind: .primary))
-            }
-            // Au-dessus de la palette PencilKit, qui flotte en bas.
-            .padding(.bottom, 150)
+    private func deleteBadge(for item: PageImage) -> some View {
+        let frame = draft ?? onScreen(item)
+        return Button { onDelete(item); selected = nil; draft = nil } label: {
+            CrossGlyph()
+                .stroke(K.paperAlt, style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
+                .frame(width: 10, height: 10)
+                .frame(width: 26, height: 26)
+                .background(K.ink, in: Circle())
         }
-        .frame(maxWidth: .infinity)
+        .buttonStyle(.plain)
+        .offset(x: frame.minX - 13, y: frame.minY - 13)
     }
 
     // MARK: Reperes
