@@ -31,7 +31,7 @@ struct PaperBackdrop: View {
     }
 
     var viewport: Viewport
-    var template: PaperTemplate
+    var template: PaperKind
     var pageSize: CGSize
     var backdrop: CGImage?
     /// La zone visible, rendue plus finement. L'image de base reste dessous :
@@ -139,7 +139,4 @@ struct PaperBackdrop: View {
     }
 }
 
-/// Modele de page. Vit hors de PaperView pour rester disponible sur Mac.
-enum PaperTemplate: String, CaseIterable, Sendable {
-    case blank, ruled, grid, dotted
-}
+

@@ -6,6 +6,9 @@ import SwiftData
     public var name: String = ""
     /// "blue" | "green" | "pink" | "yellow" | "grey"
     public var colorToken: String = "blue"
+    /// Motif de couverture. « plain » par defaut : un cahier a toujours une
+    /// couverture, meme sans avoir depense un copeau.
+    public var coverStyle: String = "plain"
     /// Identifiant de la serie d'evenements ICS.
     public var icsUID: String?
     public var teacher: String?

@@ -29,6 +29,8 @@ import SwiftData
     /// Dernier jour ou une session a ete terminee. Sans lui, la serie ne
     /// saurait pas distinguer « deja compte » de « jour suivant » (§9).
     public var lastStreakDay: Date?
+    /// Couvertures de cahier achetees. Uniquement de l'apparence (§9).
+    public var ownedCovers: [String] = []
 
     public init() {}
 }

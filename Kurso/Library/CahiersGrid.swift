@@ -37,12 +37,8 @@ struct CahiersGrid: View {
         return Button { onOpen(course) } label: {
             VStack(alignment: .leading, spacing: 0) {
                 // La tranche coloree, comme un vrai cahier pose de profil.
-                ZStack(alignment: .bottomLeading) {
-                    color
-                    Rectangle().fill(K.ink.opacity(0.18)).frame(width: 14)
-                        .frame(maxHeight: .infinity, alignment: .leading)
-                }
-                .frame(height: 82)
+                CahierCover(color: color, cover: Shop.Cover.named(course.coverStyle))
+                    .frame(height: 82)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(course.name)
@@ -107,6 +103,10 @@ struct CahierSettings: View {
     @Bindable var course: Course
     var onDone: () -> Void
 
+    @Environment(\.modelContext) private var context
+    @State private var shavings = 0
+    @State private var owned: Set<String> = []
+
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 4) {
@@ -139,11 +139,78 @@ struct CahierSettings: View {
                 }
             }
 
+            covers
+
             Button("Terminer") { onDone() }
                 .buttonStyle(StickerButtonStyle(kind: .primary))
         }
         .padding(26)
-        .frame(maxWidth: 460)
+        .frame(maxWidth: 520)
         .background(K.paper)
+        .task { refreshPlayer() }
+    }
+
+    /// Les couvertures. Elles n'achetent que de l'apparence : aucune ne donne
+    /// d'avance, le §12 l'interdit.
+    private var covers: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack {
+                MetaText("Couverture")
+                Spacer()
+                Text("\(shavings) copeaux")
+                    .font(KFont.mono(10))
+                    .foregroundStyle(K.inkSoft)
+            }
+            HStack(spacing: 10) {
+                ForEach(Shop.Cover.allCases, id: \.self) { cover in
+                    coverChip(cover)
+                }
+            }
+        }
+    }
+
+    private func coverChip(_ cover: Shop.Cover) -> some View {
+        let isOwned = Shop.isOwned(cover, owned: owned)
+        let isCurrent = course.coverStyle == cover.rawValue
+        return Button {
+            if isOwned {
+                course.coverStyle = cover.rawValue
+                try? context.save()
+            } else {
+                buy(cover)
+            }
+        } label: {
+            VStack(spacing: 4) {
+                CahierCover(color: K.cahier(CourseColor.named(course.colorToken)), cover: cover)
+                    .frame(width: 54, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(isCurrent ? K.brand : K.ink.opacity(0.3),
+                                      lineWidth: isCurrent ? 3 : 1.5))
+                    .opacity(isOwned ? 1 : 0.45)
+                Text(isOwned ? cover.label : "\(cover.price)")
+                    .font(KFont.mono(9))
+                    .foregroundStyle(isOwned ? K.inkSoft
+                                     : (shavings >= cover.price ? K.brand : K.inkSoft.opacity(0.6)))
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(!isOwned && shavings < cover.price)
+    }
+
+    private func buy(_ cover: Shop.Cover) {
+        let player = PlayerStore.current(context)
+        guard let left = Shop.buy(cover, shavings: player.shavings, owned: owned) else { return }
+        player.shavings = left
+        player.ownedCovers.append(cover.rawValue)
+        course.coverStyle = cover.rawValue
+        try? context.save()
+        refreshPlayer()
+    }
+
+    private func refreshPlayer() {
+        let player = PlayerStore.current(context)
+        shavings = player.shavings
+        owned = Set(player.ownedCovers)
     }
 }

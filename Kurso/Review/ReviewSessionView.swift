@@ -403,6 +403,17 @@ struct ReviewSessionView: View {
             player.lastStreakDay = updated.lastDay
             player.freezesRemaining = updated.freezes
         }
+        // Un noeud entierement su rapporte, une seule fois (§9).
+        if let page = card.page, page.masteredAt == nil {
+            let cards = page.cards ?? []
+            let allKnown = !cards.isEmpty && cards.allSatisfy {
+                Fiche.isAcquired(interval: $0.interval, dueAt: $0.dueAt)
+            }
+            if allKnown {
+                page.masteredAt = .now
+                PlayerStore.award(shavings: Shop.Earn.masteredNode, context: context)
+            }
+        }
         try? context.save()
 
         // Carnet vide en une session sans faute : les compteurs repartent a zero.

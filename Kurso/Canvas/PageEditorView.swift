@@ -93,7 +93,7 @@ struct PageEditorView: View {
             ZStack {
                 PaperBackdrop(
                     viewport: viewport,
-                    template: .ruled,
+                    template: PaperKind.named(page.templateRaw),
                     pageSize: CGSize(width: DrawingCanvas.pageWidth,
                                      height: DrawingCanvas.pageHeight),
                     backdrop: backdropImage,
@@ -545,6 +545,14 @@ struct PageEditorView: View {
     private var pageMenu: some View {
         Menu {
             Button("Exporter") { exportCurrent() }
+            Menu("Papier") {
+                ForEach(PaperKind.allCases, id: \.self) { kind in
+                    Button(kind.label) {
+                        page.templateRaw = kind.rawValue
+                        try? context.save()
+                    }
+                }
+            }
             if page.photo == nil {
                 Button("Mettre une photo en fond") { isPickingPhotoForPage = true }
             } else {
@@ -875,6 +883,7 @@ struct PageEditorView: View {
         // reelle, et une seule fois.
         if before < GameValues.writtenPageSeconds, page.writingSeconds >= GameValues.writtenPageSeconds {
             DailyActivityStore.record(.writePage, context: context)
+            PlayerStore.award(shavings: Shop.Earn.finishedPage, context: context)
         }
         displayedSeconds = page.writingSeconds
         page.drawing = toSave.dataRepresentation()

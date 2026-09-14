@@ -59,6 +59,10 @@ struct LibraryView: View {
                 #if DEBUG
                 // Rejoue un import de PDF, pour voir ce qu'il cree vraiment.
                 #if os(iOS)
+                if ProcessInfo.processInfo.arguments.contains("-openSettings"),
+                   let first = courses.first {
+                    customising = first
+                }
                 if ProcessInfo.processInfo.arguments.contains("-selectFirstCourse"),
                    let first = courses.first {
                     openedCourse = first

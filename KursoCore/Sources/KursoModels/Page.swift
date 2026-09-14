@@ -12,10 +12,16 @@ import SwiftData
     /// Rang dans son cahier. L'etudiant decide de l'ordre DANS une matiere :
     /// une page ecrite, deux diapos, une photo, puis la suite du cours.
     public var position: Double = 0
+    /// Modele de papier : ligné, quadrillé, pointillé ou blanc. Choisi par
+    /// l'etudiant — un cours de maths ne s'ecrit pas sur du ligné.
+    public var templateRaw: String = "ruled"
     /// Quand le sprint de fin de cours a ete propose pour cette page. On ne
     /// le propose qu'une fois : revenir sur ses notes n'est pas une fin de
     /// seance.
     public var sprintProposedAt: Date?
+    /// Quand toutes ses cartes sont devenues sues. Recompense une seule fois :
+    /// un noeud maitrise ne se remaitrise pas.
+    public var masteredAt: Date?
     /// Photo posee en fond de page. Hors de la base : une image n'a rien a
     /// faire dans un enregistrement SwiftData (§1).
     @Attribute(.externalStorage) public var photo: Data?

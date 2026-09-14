@@ -147,6 +147,7 @@ enum DebugSeed {
         player.streak = 12
         player.recordStreak = 31
         player.freezesRemaining = 2
+        player.shavings = 260
         player.displayName = "Thomas"
         // Les donnees de demo sautent la mise en route : on veut voir l'app.
         player.hasCompletedOnboarding = true
