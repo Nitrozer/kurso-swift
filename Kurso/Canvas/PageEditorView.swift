@@ -35,6 +35,8 @@ struct PageEditorView: View {
     @Environment(\.displayScale) private var displayScale
     @FocusState private var titleFocused: Bool
     #if os(iOS)
+    @State private var isCapturingRegion = false
+    @State private var pendingImage: CGImage?
     @State private var pickedPhoto: PhotosPickerItem?
     @State private var exported: ExportedFile?
     #endif
@@ -101,6 +103,15 @@ struct PageEditorView: View {
                         slideImage: backdropImage
                     ) { isMasking = false }
                 }
+                if isCapturingRegion {
+                    RegionCaptureLayer(
+                        onCapture: { rect in
+                            pendingImage = regionImage(rect)
+                            isCapturingRegion = false
+                        },
+                        onCancel: { isCapturingRegion = false }
+                    )
+                }
                 if isCapturing {
                     CaptureLayer(
                         drawing: drawing,
@@ -134,10 +145,29 @@ struct PageEditorView: View {
             CapturePrompt(page: page, answer: draft.drawing) { pendingCapture = nil }
         }
         #if os(iOS)
+        .sheet(item: Binding(
+            get: { pendingImage.map { ImageDraft(image: $0) } },
+            set: { if $0 == nil { pendingImage = nil } }
+        )) { draft in
+            CapturePrompt(page: page, image: draft.image) { pendingImage = nil }
+        }
+        #endif
+        #if os(iOS)
         .task { await loadPDF() }
         .onChange(of: viewport) { scheduleTile() }
         .task {
             #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-simulateRegion") {
+                try? await Task.sleep(for: .seconds(4))
+                // Une region qui couvre la bande rouge du PDF d'essai.
+                if let image = regionImage(CGRect(x: 40, y: 60, width: 520, height: 260)) {
+                    let url = FileManager.default.temporaryDirectory.appending(path: "region.png")
+                    try? UIImage(cgImage: image).pngData()?.write(to: url)
+                    print("[REGION] \(image.width)x\(image.height) → \(url.path)")
+                } else {
+                    print("[REGION] echec")
+                }
+            }
             if ProcessInfo.processInfo.arguments.contains("-simulateOcclusion") {
                 try? await Task.sleep(for: .seconds(1))
                 isMasking = true
@@ -243,6 +273,17 @@ struct PageEditorView: View {
                 }
                 .buttonStyle(.plain)
             } else if hasBackdrop {
+                #if os(iOS)
+                Button { isCapturingRegion.toggle() } label: {
+                    Text(isCapturingRegion ? "Annuler" : "Capturer une image")
+                        .font(KFont.body(12, weight: .extraBold))
+                        .foregroundStyle(isCapturingRegion ? K.paperAlt : K.ink)
+                        .padding(.horizontal, 13).padding(.vertical, 7)
+                        .background(isCapturingRegion ? K.brand : .clear, in: Capsule())
+                        .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
+                }
+                .buttonStyle(.plain)
+                #endif
                 Button { isMasking.toggle() } label: {
                     Text(isMasking ? "Terminer" : "Masquer pour réviser")
                         .font(KFont.body(12, weight: .extraBold))
@@ -351,7 +392,9 @@ struct PageEditorView: View {
         let maxSide: CGFloat = 2_000
         let scale = min(1, maxSide / max(source.size.width, source.size.height))
         let size = CGSize(width: source.size.width * scale, height: source.size.height * scale)
-        let reduced = UIGraphicsImageRenderer(size: size).image { context in
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1   // sinon l'ecran Retina double la taille demandee
+        let reduced = UIGraphicsImageRenderer(size: size, format: format).image { context in
             context.cgContext.interpolationQuality = .high
             source.draw(in: CGRect(origin: .zero, size: size))
         }
@@ -361,6 +404,79 @@ struct PageEditorView: View {
         pickedPhoto = nil
     }
 
+    #endif
+
+    #if os(iOS)
+    /// Decoupe un morceau de la page : le fond ET ce qui est ecrit dessus.
+    ///
+    /// Le fond est redemande a sa source, jamais agrandi depuis l'apercu :
+    /// c'est ce qui permet de garder un schema net meme decoupe petit.
+    private func regionImage(_ screenRect: CGRect) -> CGImage? {
+        guard screenRect.width > 8, screenRect.height > 8 else { return nil }
+        let zoom = max(viewport.zoom, 0.01)
+        let pageRect = CGRect(x: -viewport.offset.x, y: -viewport.offset.y,
+                              width: PaperBackdrop.pageWidth * zoom,
+                              height: PaperBackdrop.pageHeight * zoom)
+
+        // Le meme rectangle, dans le repere de la page.
+        let inPage = CGRect(x: (screenRect.minX - pageRect.minX) / zoom,
+                            y: (screenRect.minY - pageRect.minY) / zoom,
+                            width: screenRect.width / zoom,
+                            height: screenRect.height / zoom)
+
+        let pixelWidth = min(max(screenRect.width * 3, 400), 2_400)
+        let size = CGSize(width: pixelWidth,
+                          height: pixelWidth * screenRect.height / screenRect.width)
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1   // sinon l'ecran Retina double la taille demandee
+        return UIGraphicsImageRenderer(size: size, format: format).image { ctx in
+            UIColor.white.setFill()
+            ctx.fill(CGRect(origin: .zero, size: size))
+
+            if let source = backdropImage {
+                let fitted = PaperBackdrop.fitted(
+                    CGSize(width: source.width, height: source.height), into: pageRect)
+                let visible = fitted.intersection(screenRect)
+                if !visible.isNull, fitted.width > 0, fitted.height > 0 {
+                    let crop = CGRect(x: (visible.minX - fitted.minX) / fitted.width,
+                                      y: (visible.minY - fitted.minY) / fitted.height,
+                                      width: visible.width / fitted.width,
+                                      height: visible.height / fitted.height)
+                    if let piece = backdropCrop(crop, pixelWidth: Int(pixelWidth)) {
+                        // Replace le morceau la ou il tombe dans la selection.
+                        let scale = size.width / screenRect.width
+                        let target = CGRect(x: (visible.minX - screenRect.minX) * scale,
+                                            y: (visible.minY - screenRect.minY) * scale,
+                                            width: visible.width * scale,
+                                            height: visible.height * scale)
+                        UIImage(cgImage: piece).draw(in: target)
+                    }
+                }
+            }
+
+            // L'ecriture par-dessus, a la meme echelle.
+            if !drawing.strokes.isEmpty {
+                drawing.image(from: inPage, scale: size.width / inPage.width)
+                    .draw(in: CGRect(origin: .zero, size: size))
+            }
+        }.cgImage
+    }
+
+    /// Le fond, redemande a sa source pour la portion voulue.
+    private func backdropCrop(_ crop: CGRect, pixelWidth: Int) -> CGImage? {
+        if page.pdfAssetID == nil, let source = backdropImage {
+            // Une photo : on decoupe dans l'image deja chargee.
+            let rect = CGRect(x: crop.minX * CGFloat(source.width),
+                              y: crop.minY * CGFloat(source.height),
+                              width: crop.width * CGFloat(source.width),
+                              height: crop.height * CGFloat(source.height))
+            return source.cropping(to: rect.integral)
+        }
+        guard let name = pdfFileName, let index = page_pdfIndex else { return nil }
+        return PDFStore.render(fileName: name, pageIndex: index,
+                               crop: crop, pixelWidth: pixelWidth)
+    }
     #endif
 
     /// Ranger une diapo range TOUT le PDF.
@@ -593,6 +709,14 @@ struct PageEditorView: View {
         }
     }
 }
+
+#if os(iOS)
+/// Enveloppe identifiable pour un morceau de page decoupe.
+struct ImageDraft: Identifiable {
+    let id = UUID()
+    let image: CGImage
+}
+#endif
 
 /// Enveloppe identifiable, pour presenter la saisie de question en feuille.
 struct CaptureDraft: Identifiable {

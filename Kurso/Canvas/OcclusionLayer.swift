@@ -199,7 +199,9 @@ struct OcclusionLayer: View {
         let scale = min(1, targetWidth / CGFloat(image.width))
         let size = CGSize(width: CGFloat(image.width) * scale,
                           height: CGFloat(image.height) * scale)
-        let renderer = UIGraphicsImageRenderer(size: size)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1   // sinon l'ecran Retina double la taille demandee
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
         let reduced = renderer.image { context in
             context.cgContext.interpolationQuality = .high
             UIImage(cgImage: image).draw(in: CGRect(origin: .zero, size: size))

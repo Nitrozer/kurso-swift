@@ -8,7 +8,9 @@ import KursoModels
 /// Seule la question se tape : le verso reste le trace manuscrit, tel quel.
 struct CapturePrompt: View {
     let page: Page
-    let answer: PKDrawing
+    var answer: PKDrawing = PKDrawing()
+    /// Un morceau de diapo ou de photo, quand le verso n'est pas manuscrit.
+    var image: CGImage?
     var onDone: () -> Void
 
     @Environment(\.modelContext) private var context
@@ -45,7 +47,12 @@ struct CapturePrompt: View {
 
     /// Le verso, montre tel qu'il sera garde.
     @ViewBuilder private var preview: some View {
-        if !answer.bounds.isEmpty {
+        if let image {
+            Image(decorative: image, scale: 1)
+                .resizable().scaledToFit().frame(maxHeight: 160)
+                .padding(12).frame(maxWidth: .infinity)
+                .sticker(fill: K.paperAlt, radius: 14)
+        } else if !answer.bounds.isEmpty {
             let image = answer.image(from: answer.bounds, scale: 2)
             #if canImport(UIKit)
             Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 120)
@@ -61,8 +68,14 @@ struct CapturePrompt: View {
 
     private func create() {
         let card = Card(question: question.trimmingCharacters(in: .whitespaces), kind: .frontBack, dueAt: .now)
-        // Le trace, pas une transcription : « inser° » reste « inser° » (§4).
-        card.answerDrawing = answer.dataRepresentation()
+        if let image {
+            #if canImport(UIKit)
+            card.imageData = UIImage(cgImage: image).jpegData(compressionQuality: 0.8)
+            #endif
+        } else {
+            // Le trace, pas une transcription : « inser° » reste « inser° » (§4).
+            card.answerDrawing = answer.dataRepresentation()
+        }
         card.page = page
         context.insert(card)
         DailyActivityStore.record(.captureCard, context: context)
