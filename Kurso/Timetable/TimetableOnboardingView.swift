@@ -21,6 +21,7 @@ struct TimetableOnboardingView: View {
 
     @State private var isReplacing = false
     @State private var courseToRemove: Course?
+    @Query private var seasons: [Season]
     @State private var url = ""
     @State private var proposals: [TimetableImporter.Proposal] = []
     @State private var events: [ICSEvent] = []
@@ -142,6 +143,7 @@ struct TimetableOnboardingView: View {
             }
             .scrollIndicators(.hidden)
 
+            examRow
             HStack(spacing: 12) {
                 Button("Fermer") { try? context.save(); close() }
                     .buttonStyle(StickerButtonStyle(kind: .secondary))
@@ -154,6 +156,52 @@ struct TimetableOnboardingView: View {
             .padding(.horizontal, 28)
             .padding(.bottom, 22)
         }
+    }
+
+    /// La date du prochain partiel : c'est elle qui met l'app en mode revision
+    /// quatorze jours avant (§9). Sans elle, ce mode ne s'ouvrirait jamais.
+    @ViewBuilder private var examRow: some View {
+        let season = seasons.first { $0.closedAt == nil }
+        HStack(spacing: 13) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Prochain partiel")
+                    .font(KFont.body(14, weight: .extraBold))
+                    .foregroundStyle(K.ink)
+                MetaText(examSubtitle(season))
+            }
+            Spacer(minLength: 0)
+            DatePicker("", selection: Binding(
+                get: { season?.examDate ?? Date.now.addingTimeInterval(14 * 86_400) },
+                set: { newValue in
+                    let target = season ?? SeasonStore.ensure(context)
+                    target.examDate = newValue
+                    try? context.save()
+                }
+            ), displayedComponents: .date)
+            .labelsHidden()
+            if season?.examDate != nil {
+                Button("Retirer") {
+                    season?.examDate = nil
+                    try? context.save()
+                }
+                .buttonStyle(StickerButtonStyle(kind: .secondary))
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .sticker(fill: K.paperAlt, radius: 14)
+        .padding(.horizontal, 28)
+        .padding(.bottom, 12)
+    }
+
+    private func examSubtitle(_ season: Season?) -> String {
+        guard let date = season?.examDate else {
+            return "Non renseigné — le mode révision reste fermé"
+        }
+        let days = Calendar.current.dateComponents([.day], from: .now, to: date).day ?? 0
+        if days < 0 { return "Passé" }
+        if ExamMode.isActive(examDate: date) { return "Dans \(days) jours · mode révision ouvert" }
+        return "Dans \(days) jours"
     }
 
     /// Un intitule d'ENT se corrige apres coup : « CM ALGO S3 » n'est pas un

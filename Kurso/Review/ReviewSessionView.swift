@@ -17,6 +17,8 @@ struct ReviewSessionView: View {
     @State private var isRevealed = false
     @State private var player: PlayerState?
     @State private var isMistakeBookRun = false
+    /// A l'approche d'un partiel, la session change de forme (§9).
+    @State private var isExamMode = false
 
     var body: some View {
         Group {
@@ -39,6 +41,7 @@ struct ReviewSessionView: View {
         .background(K.paper)
         .task {
             loadPlayer()
+            isExamMode = SeasonStore.isExamMode(context)
             #if DEBUG
             // Permet d'inspecter l'ecran de carte sans pouvoir taper.
             if ProcessInfo.processInfo.arguments.contains("-autoStartReview"), session == nil {
@@ -103,10 +106,19 @@ struct ReviewSessionView: View {
 
             Spacer(minLength: 0)
             VStack(spacing: 20) {
-                Text(current?.question ?? "")
+                Text(prompt(session))
                     .font(KFont.display(28))
                     .foregroundStyle(K.ink)
                     .multilineTextAlignment(.center)
+
+                if isReversed(session) {
+                    Text("À L'ENVERS")
+                        .font(KFont.mono(9.5))
+                        .tracking(1)
+                        .foregroundStyle(K.brand)
+                        .padding(.horizontal, 10).padding(.vertical, 3)
+                        .background(K.brand.opacity(0.12), in: Capsule())
+                }
 
                 // Une carte tiree d'une diapo montre la diapo : la zone reste
                 // couverte tant qu'on n'a pas repondu.
@@ -139,6 +151,14 @@ struct ReviewSessionView: View {
                 .padding(20)
                 .frame(maxWidth: .infinity)
                 .sticker(fill: K.paperAlt, radius: 18, state: .done)
+        } else if let session, isReversed(session) {
+            Text(current?.question ?? "")
+                .font(KFont.body(18, weight: .bold))
+                .foregroundStyle(K.inkBody)
+                .multilineTextAlignment(.center)
+                .padding(20)
+                .frame(maxWidth: .infinity)
+                .sticker(fill: K.paperAlt, radius: 18, state: .done)
         } else if let text = current?.answerText, !text.isEmpty {
             Text(text)
                 .font(KFont.body(18, weight: .bold))
@@ -152,6 +172,19 @@ struct ReviewSessionView: View {
                 .font(KFont.body(13, weight: .bold))
                 .foregroundStyle(K.inkSoft)
         }
+    }
+
+    /// Une carte sur trois se tire a l'envers pendant le mode partiel :
+    /// reconnaitre une reponse n'est pas la meme chose que la retrouver.
+    private func isReversed(_ session: ReviewSession) -> Bool {
+        ExamMode.isReversed(index: session.index, isExamMode: isExamMode)
+    }
+
+    /// Ce qu'on montre en premier.
+    private func prompt(_ session: ReviewSession) -> String {
+        guard isReversed(session) else { return current?.question ?? "" }
+        let answer = current?.answerText ?? ""
+        return answer.isEmpty ? (current?.question ?? "") : answer
     }
 
     /// La diapo enregistree avec la carte, s'il y en a une.
@@ -317,7 +350,14 @@ struct ReviewSessionView: View {
     private func begin(mistakeBookOnly: Bool = false) {
         isMistakeBookRun = mistakeBookOnly
         // Le carnet se joue en entier : le vider a moitie ne compte pas.
-        queue = mistakeBookOnly ? mistakeCards : Array(dueCards.prefix(ReviewSession.defaultSize))
+        // A l'approche d'un partiel, la session passe a vingt cartes, et les
+        // plus fragiles d'abord : c'est le moment de rattraper, pas de reviser
+        // ce qu'on sait deja.
+        let size = ExamMode.sessionSize(isExamMode: isExamMode, ordinary: ReviewSession.defaultSize)
+        let pool = isExamMode
+            ? dueCards.sorted { $0.interval < $1.interval }
+            : dueCards
+        queue = mistakeBookOnly ? mistakeCards : Array(pool.prefix(size))
         session = ReviewSession(
             cardCount: queue.count,
             gommes: player?.gommesRemaining ?? GameValues.maxGommes,
@@ -349,7 +389,9 @@ struct ReviewSessionView: View {
             player.shavings += answer == .failed ? 0 : GameValues.shavingsPerCard
         }
         // La serie avance quand une session est terminee, pas a chaque carte.
-        if session.outcome == .finished, let player {
+        // Pendant le mode partiel elle gele : elle n'avance plus, mais elle ne
+        // casse pas non plus — on ne culpabilise pas quelqu'un qui revise.
+        if session.outcome == .finished, !isExamMode, let player {
             let updated = StreakRule.sessionFinished(
                 StreakRule.State(streak: player.streak,
                                  record: player.recordStreak,

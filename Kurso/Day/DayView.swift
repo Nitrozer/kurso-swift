@@ -16,6 +16,8 @@ struct DayView: View {
     @Query(sort: \Page.createdAt, order: .reverse) private var pages: [Page]
 
     @State private var player: PlayerState?
+    /// Mode partiel : le jeu se tait, la serie gele (§9).
+    @State private var isExamMode = false
     @State private var activity: DailyActivity?
     @State private var now = Date()
 
@@ -54,10 +56,14 @@ struct DayView: View {
                     .frame(maxWidth: 320)
                 }
 
+                if isExamMode { examBanner }
+
                 HStack(alignment: .top, spacing: 18) {
                     questsColumn.frame(maxWidth: .infinity)
                     upcoming.frame(maxWidth: .infinity)
-                    leagueColumn.frame(width: 200)
+                    // Ni ligue ni coffre pendant les revisions : le jeu se
+                    // tait, on ne joue pas a quinze jours d'un partiel (§9).
+                    if !isExamMode { leagueColumn.frame(width: 200) }
                 }
 
                 reviewCTA
@@ -467,6 +473,26 @@ struct DayView: View {
 
     // MARK: Appel à réviser
 
+    /// On dit ce qui change, sinon le jeu semble casse.
+    private var examBanner: some View {
+        HStack(spacing: 14) {
+            GribouView(mood: .concentre, size: 46)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Mode révision")
+                    .font(KFont.display(19))
+                    .foregroundStyle(K.paperAlt)
+                Text("Sessions de 20 cartes, les plus fragiles d'abord. Ta série est gelée : elle ne monte plus, mais elle ne casse pas.")
+                    .font(KFont.body(12.5, weight: .bold))
+                    .foregroundStyle(K.paperAlt.opacity(0.75))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(K.ink, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
     @ViewBuilder private var reviewCTA: some View {
         if !dueCards.isEmpty {
             Button { tab = .review } label: {
@@ -525,6 +551,7 @@ struct DayView: View {
 
     private func load() {
         player = try? context.fetch(FetchDescriptor<PlayerState>()).first
+        isExamMode = SeasonStore.isExamMode(context)
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-simulateOpenCahier") { simulateOpenTwice() }
         #endif

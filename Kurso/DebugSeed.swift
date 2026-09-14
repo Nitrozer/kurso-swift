@@ -130,6 +130,17 @@ enum DebugSeed {
         }
         #endif
 
+        #if DEBUG
+        // Un partiel proche, pour voir le mode revision.
+        if ProcessInfo.processInfo.arguments.contains("-examSoon") {
+            let season = Season()
+            season.name = "Semestre 5"
+            season.startsAt = .now
+            season.examDate = Date().addingTimeInterval(10 * 86_400)
+            context.insert(season)
+        }
+        #endif
+
         let player = PlayerState()
         player.xp = 320
         player.level = 7
