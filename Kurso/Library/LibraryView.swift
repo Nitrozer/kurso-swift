@@ -53,6 +53,7 @@ struct LibraryView: View {
                 if ProcessInfo.processInfo.arguments.contains("-selectFirstCourse"),
                    let first = courses.first {
                     openedCourse = first
+                    openFirst(of: first)
                 }
                 if ProcessInfo.processInfo.arguments.contains("-simulatePicker") {
                     pendingPDF = PickedPDF(url: URL(filePath: "/tmp/Cours de maths.pdf"))
@@ -92,13 +93,72 @@ struct LibraryView: View {
 
     @ViewBuilder private var content: some View {
         if let page = openedPage {
-            PageEditorView(page: page,
-                           onClose: { openedPage = nil },
-                           onOpenSlide: { openedPage = $0 })
-                .id(page.id)
+            HStack(spacing: 0) {
+                #if os(iOS)
+                // Comme dans un vrai cahier : on tombe sur la feuille, et le
+                // panneau sert a se deplacer dedans.
+                PageNavigator(
+                    pages: orderedCurrent,
+                    current: page,
+                    onSelect: { openedPage = $0 },
+                    onAdd: { kind, position in
+                        insert(kind, at: position, in: openedCourse)
+                    },
+                    onDuplicate: { duplicate($0) },
+                    onDelete: { pageToDelete = $0 }
+                )
+                Rectangle().fill(K.ink.opacity(0.12)).frame(width: 1)
+                #endif
+                PageEditorView(page: page,
+                               onClose: { closeCahier() },
+                               onOpenSlide: { openedPage = $0 })
+                    .id(page.id)
+            }
         } else {
             library
         }
+    }
+
+    /// Entrer dans un cahier ouvre sa feuille. Vide, on lui en cree une :
+    /// un cahier qu'on ouvre doit donner de quoi ecrire, pas une liste vide.
+    private func openFirst(of course: Course?) {
+        let existing = pages
+            .filter { course == nil ? $0.course == nil : $0.course?.id == course?.id }
+            .sorted { $0.position == $1.position ? $0.createdAt < $1.createdAt : $0.position < $1.position }
+        if let first = existing.first { openedPage = first; return }
+        #if os(iOS)
+        let page = Page(createdAt: .now)
+        page.course = course
+        page.position = 0
+        context.insert(page)
+        try? context.save()
+        openedPage = page
+        #endif
+    }
+
+    #if os(iOS)
+    /// Copier une page copie ce qu'elle porte, pas seulement son titre.
+    private func duplicate(_ page: Page) {
+        let copy = Page(title: page.title, createdAt: .now)
+        copy.titleWasEdited = page.titleWasEdited
+        copy.course = page.course
+        copy.drawing = page.drawing
+        copy.photo = page.photo
+        copy.photoBox = page.photoBox
+        copy.pdfAssetID = page.pdfAssetID
+        copy.pdfPageIndex = page.pdfPageIndex
+        let next = orderedCurrent.first { $0.position > page.position }?.position
+        copy.position = PageOrdering.position(after: page.position, before: next)
+        context.insert(copy)
+        try? context.save()
+        openedPage = copy
+    }
+    #endif
+
+    private func closeCahier() {
+        openedPage = nil
+        openedCourse = nil
+        showsLoose = false
     }
 
     private var library: some View {
@@ -107,7 +167,8 @@ struct LibraryView: View {
             if !query.isEmpty {
                 searchResults
             } else if isInsideCahier {
-                cahierInterior
+                // Etat de passage : un cahier ouvert a toujours une feuille.
+                Color.clear.task { openFirst(of: openedCourse) }
             } else {
                 if courses.isEmpty { importInvite }
                 CahiersGrid(
@@ -117,6 +178,7 @@ struct LibraryView: View {
                     onOpen: { course in
                         openedCourse = course
                         showsLoose = (course == nil)
+                        openFirst(of: course)
                     },
                     onCustomise: { customising = $0 }
                 )
@@ -388,7 +450,7 @@ struct LibraryView: View {
         try? context.save()
     }
 
-    private func insert(_ kind: NotebookList.Kind, at position: Double, in course: Course?) {
+    private func insert(_ kind: PageNavigator.Kind, at position: Double, in course: Course?) {
         let list = orderedCurrent
         let after = list.last(where: { $0.position < position })?.position
         let before = list.first(where: { $0.position > position })?.position
@@ -452,98 +514,13 @@ struct LibraryView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: Grille de pages
-
-    /// L'interieur d'un cahier : la barre d'ajout, puis la sequence.
-    private var cahierInterior: some View {
-        HStack(spacing: 0) {
-            addSidebar
-            Rectangle().fill(K.ink.opacity(0.1)).frame(width: 1)
-            grid
-        }
-    }
-
-    /// La barre de gauche : de quoi composer son cahier de cours.
-    @ViewBuilder private var addSidebar: some View {
-        #if os(iOS)
-        VStack(alignment: .leading, spacing: 9) {
-            MetaText("AJOUTER", size: 9.5)
-                .padding(.bottom, 2)
-            sidebarButton("Page manuscrite", .handwritten)
-            sidebarButton("Pages d'un PDF", .pdf)
-            sidebarButton("Une image", .image)
-            Spacer(minLength: 0)
-            if let course = openedCourse {
-                Button { customising = course } label: {
-                    HStack(spacing: 8) {
-                        Circle().fill(K.cahier(CourseColor.named(course.colorToken)))
-                            .frame(width: 14, height: 14)
-                            .overlay(Circle().strokeBorder(K.ink, lineWidth: 2))
-                        Text("Personnaliser")
-                            .font(KFont.body(12, weight: .extraBold))
-                            .foregroundStyle(K.ink)
-                    }
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(16)
-        .frame(width: 186, alignment: .leading)
-        .frame(maxHeight: .infinity, alignment: .top)
-        #endif
-    }
-
     #if os(iOS)
-    private func sidebarButton(_ title: String, _ kind: NotebookList.Kind) -> some View {
-        Button {
-            let list = orderedCurrent
-            insert(kind, at: PageOrdering.append(to: list.map(\.position)), in: openedCourse)
-        } label: {
-            HStack(spacing: 8) {
-                Glyph(kind: .plus, size: 12)
-                Text(title)
-                    .font(KFont.body(12.5, weight: .extraBold))
-                    .foregroundStyle(K.ink)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 9)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .sticker(fill: K.paperAlt, radius: 12)
-        }
-        .buttonStyle(.plain)
-    }
     #endif
 
     private var orderedCurrent: [Page] {
         if let course = openedCourse { return ordered(for: course) }
         return pages.filter { $0.course == nil }
             .sorted { $0.position == $1.position ? $0.createdAt < $1.createdAt : $0.position < $1.position }
-    }
-
-    @ViewBuilder private var grid: some View {
-        if orderedCurrent.isEmpty {
-            EmptyState(title: "Cahier vide",
-                       message: "Ajoute une page, un PDF ou une image depuis la barre de gauche.")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            #if os(iOS)
-            NotebookList(
-                pages: orderedCurrent,
-                onOpen: { openedPage = $0 },
-                onDelete: { pageToDelete = $0 },
-                onMove: { page, target in move(page, to: target) },
-                onInsert: { kind, position in insert(kind, at: position, in: openedCourse) }
-            )
-            #else
-            NotebookList(
-                pages: orderedCurrent,
-                onOpen: { openedPage = $0 },
-                onDelete: { pageToDelete = $0 },
-                onMove: { _, _ in },
-                onInsert: { _, _ in }
-            )
-            #endif
-        }
     }
 
     @ViewBuilder private var searchResults: some View {

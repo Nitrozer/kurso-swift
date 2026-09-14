@@ -42,6 +42,7 @@ struct PageEditorView: View {
     @State private var isPickingPDF = false
     @State private var pendingPDF: PickedPDF?
     @State private var isAdjustingPhoto = false
+    @State private var isPickingPhotoForPage = false
     @State private var exported: ExportedFile?
     #endif
     #if os(iOS)
@@ -277,15 +278,12 @@ struct PageEditorView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 MetaText(page.createdAt.formatted(.dateTime.weekday(.wide).day().month(.wide)))
             }
-            #if os(iOS)
-            exportButton
-            addPDFButton
-            photoButton
-            adjustPhotoButton
-            #endif
             coursePicker
             slideNav
             Spacer()
+            #if os(iOS)
+            pageMenu
+            #endif
             if loadFailed {
                 // Un dessin illisible ne doit jamais etre ecrase en silence (§8).
                 Text("DESSIN ILLISIBLE")
@@ -419,6 +417,39 @@ struct PageEditorView: View {
                                 width: rect.width / pageRect.width,
                                 height: rect.height / pageRect.height)
         try? context.save()
+    }
+
+    /// Les actions de la page, rangees : l'en-tete ne peut pas porter six
+    /// boutons a cote du panneau des pages.
+    private var pageMenu: some View {
+        Menu {
+            Button("Exporter") { exportCurrent() }
+            if page.photo == nil {
+                Button("Mettre une photo en fond") { isPickingPhotoForPage = true }
+            } else {
+                Button("Changer la photo") { isPickingPhotoForPage = true }
+                Button("Régler l'image") { isAdjustingPhoto = true }
+            }
+        } label: {
+            Text("···")
+                .font(KFont.body(15, weight: .extraBold))
+                .foregroundStyle(K.ink)
+                .frame(width: 36, height: 30)
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(K.ink, lineWidth: 2.5))
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .photosPicker(isPresented: $isPickingPhotoForPage,
+                      selection: $pickedPhoto, matching: .images)
+    }
+
+    private func exportCurrent() {
+        PDFAssetLookup.remember(assets)
+        let siblings = slideSiblings
+        exported = PageExporter.write(siblings.isEmpty ? [page] : siblings,
+                                      fallbackName: page.title.isEmpty ? "Page Kurso" : page.title)
+            .map(ExportedFile.init)
     }
 
     /// Deposer des diapos dans le meme cahier que cette note.
