@@ -48,6 +48,8 @@ struct AppShell: View {
             ReviewSessionView()
         case .memory:
             MemoryMapView()
+        case .cards:
+            FichesView()
         default:
             EmptyState(
                 title: tab.label.capitalized,

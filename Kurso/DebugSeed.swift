@@ -70,6 +70,28 @@ enum DebugSeed {
         context.insert(masked)
         #endif
 
+        // Quelques pages aux etats varies, pour voir les trois raretes de fiche.
+        for (title, cards, acquired, lapses) in [
+            ("Tri par tas", 4, 4, 0),
+            ("Diviser pour régner", 5, 4, 0),
+            ("Files de priorité", 6, 1, 3),
+            ("Graphes pondérés", 0, 0, 0),
+        ] {
+            let extra = Page(title: title, createdAt: .now)
+            extra.titleWasEdited = true
+            extra.course = course
+            context.insert(extra)
+            for index in 0..<cards {
+                let card = Card(question: "\(title) — \(index + 1)", kind: .frontBack, dueAt: .now)
+                // Une carte acquise a un long intervalle et n'est pas en retard.
+                card.interval = index < acquired ? 21 : 1
+                card.dueAt = index < acquired ? Date().addingTimeInterval(86_400 * 10) : Date()
+                card.lapses = index < lapses ? 1 : 0
+                card.page = extra
+                context.insert(card)
+            }
+        }
+
         let player = PlayerState()
         player.xp = 320
         player.level = 7
