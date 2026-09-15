@@ -13,7 +13,7 @@ enum KursoStore {
         League.self, LeagueMember.self, Assignment.self, GlossaryTerm.self,
         Abbreviation.self, AudioRecording.self, Quest.self, PlayerState.self,
         Timetable.self, TimeSlot.self, MarkerFeedback.self, PDFAsset.self, DailyActivity.self,
-        PageImage.self,
+        PageImage.self, ExamSnapshot.self, ExamPaper.self,
     ])
 
     /// `cloudKitDatabase` reste desactive tant que le compte developpeur n'est

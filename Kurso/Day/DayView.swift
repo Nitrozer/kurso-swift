@@ -14,10 +14,14 @@ struct DayView: View {
     @Query private var assignments: [Assignment]
     @Query private var activities: [DailyActivity]
     @Query(sort: \Page.createdAt, order: .reverse) private var pages: [Page]
+    @Query private var courses: [Course]
 
     @State private var player: PlayerState?
     /// Le releve de fin de semestre, quand on le regarde.
     @State private var reportFor: Season?
+    /// La copie qu'on relit, et la saisie quand on la remplit.
+    @State private var paperFor: ExamPaper?
+    @State private var isEnteringPaper = false
     /// Mode partiel : le jeu se tait, la serie gele (§9).
     @State private var isExamMode = false
     @State private var activity: DailyActivity?
@@ -60,6 +64,7 @@ struct DayView: View {
 
                 if isExamMode { examBanner }
                 if let season = closableSeason { seasonBanner(season) }
+                if let exam = reviewableExam { paperBanner(exam) }
 
                 HStack(alignment: .top, spacing: 18) {
                     questsColumn.frame(maxWidth: .infinity)
@@ -81,9 +86,25 @@ struct DayView: View {
         .task { load() }
         #if os(iOS)
         .fullScreenCover(item: $reportFor) { season in seasonReport(season) }
+        .fullScreenCover(item: $paperFor) { paper in examPaper(paper) }
         #else
         .sheet(item: $reportFor) { season in seasonReport(season) }
+        .sheet(item: $paperFor) { paper in examPaper(paper) }
         #endif
+        .sheet(isPresented: $isEnteringPaper) {
+            ExamPaperEntry(
+                courses: courses,
+                pages: pages.filter { $0.course?.archivedAt == nil },
+                examDate: SeasonStore.current(context)?.examDate ?? .now,
+                onSave: { paper in
+                    context.insert(paper)
+                    try? context.save()
+                    isEnteringPaper = false
+                    paperFor = paper
+                },
+                onCancel: { isEnteringPaper = false }
+            )
+        }
     }
 
     // MARK: En-tête
@@ -486,6 +507,75 @@ struct DayView: View {
     // MARK: Appel à réviser
 
     @ViewBuilder
+    private func examPaper(_ paper: ExamPaper) -> some View {
+        let misses = ExamPaperStore.misses(for: paper, context: context)
+        ExamPaperView(
+            paper: paper,
+            misses: misses,
+            pageTitles: Dictionary(
+                misses.compactMap { miss -> (UUID, String)? in
+                    guard let id = miss.pageID,
+                          let title = ExamPaperStore.pageTitle(id, paper: paper, context: context)
+                    else { return nil }
+                    return (id, title)
+                },
+                uniquingKeysWith: { a, _ in a }
+            ),
+            onOpenPage: { id in
+                paperFor = nil
+                if let page = pages.first(where: { $0.id == id }) { onOpenPage(page) }
+            },
+            onClose: { paperFor = nil }
+        )
+    }
+
+    /// Un partiel passe, dont la copie n'a pas encore ete relue.
+    private var reviewableExam: Date? {
+        guard let season = SeasonStore.current(context), let exam = season.examDate,
+              exam < .now else { return nil }
+        return exam
+    }
+
+    /// On propose le retour sur copie, on ne le reclame pas (§12).
+    private func paperBanner(_ exam: Date) -> some View {
+        let existing = ExamPaperStore.latest(context)
+        let done = existing?.examDate == exam
+        return Button {
+            if done, let existing { paperFor = existing } else { isEnteringPaper = true }
+        } label: {
+            HStack(spacing: 14) {
+                GribouView(mood: .concentre, size: 42)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(done ? "Ton retour sur copie" : "Le partiel est passé")
+                        .font(KFont.display(18))
+                        .foregroundStyle(K.ink)
+                    Text(done
+                         ? "Relis ce que Kurso en a retenu."
+                         : "Si tu as ta note, Kurso peut la rapprocher de l'état de tes pages la veille. C'est facultatif.")
+                        .font(KFont.body(12.5, weight: .bold))
+                        .foregroundStyle(K.inkBody)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Text(done ? "RELIRE" : "SAISIR MA NOTE")
+                    .font(KFont.body(11.5, weight: .extraBold))
+                    .tracking(1)
+                    .foregroundStyle(K.ink)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(K.reward, in: Capsule())
+                    .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity)
+            .background(K.paperAlt, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(K.ink, lineWidth: 3))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
     private func seasonReport(_ season: Season) -> some View {
         SeasonReportView(
             season: season,
@@ -614,8 +704,51 @@ struct DayView: View {
     private func load() {
         player = try? context.fetch(FetchDescriptor<PlayerState>()).first
         isExamMode = SeasonStore.isExamMode(context)
+        // La veille d'un partiel, on photographie l'etat des pages : cet etat
+        // ne se reconstitue pas apres coup, et c'est lui que le retour sur
+        // copie rapproche des exercices rates.
+        ExamPaperStore.snapshotIfNeeded(context)
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-simulateOpenCahier") { simulateOpenTwice() }
+        if ProcessInfo.processInfo.arguments.contains("-simulateExamPaper") {
+            let season = SeasonStore.ensure(context)
+            let exam = Date().addingTimeInterval(-3 * 86_400)
+            season.examDate = exam
+
+            // Trois pages photographiees la veille, dans trois etats.
+            let states = ["à sauver", "à revoir", "acquise"]
+            let days = [22, 6, 2]
+            let targets = Array(pages.prefix(3))
+            for (index, page) in targets.enumerated() {
+                let shot = ExamSnapshot()
+                shot.pageID = page.id
+                shot.pageTitle = "\(page.title.isEmpty ? "Sans titre" : page.title) · page \(index + 1)"
+                shot.stateRaw = states[index]
+                shot.daysSinceReview = days[index]
+                shot.takenAt = exam.addingTimeInterval(-3_600)
+                shot.examDate = exam
+                context.insert(shot)
+            }
+
+            let paper = ExamPaper()
+            paper.courseName = courses.first?.name ?? "Algorithmique avancée"
+            paper.examDate = exam
+            paper.grade = 14
+            paper.outOf = 20
+            paper.misses = zip(targets, [
+                ("Exercice 2 — Dijkstra sur graphe pondéré", 3.0, "exercise"),
+                ("Exercice 4 — construction d'un tas en O(n)", 2.0, "exercise"),
+                ("Question de cours — définition du potentiel", 1.0, "courseQuestion"),
+            ]).map { page, spec in
+                StoredMiss(label: spec.0, points: spec.1, kindRaw: spec.2, pageID: page.id)
+            }
+            context.insert(paper)
+            try? context.save()
+            let built = ExamPaperStore.misses(for: paper, context: context)
+            print("[COPIE] \(built.count) ratés · fragiles=\(built.filter(\.wasFragile).count)"
+                + " · réglages=\(ExamReview.verdict(misses: built, grade: 14, outOf: 20).adjustments.count)")
+            paperFor = paper
+        }
         if ProcessInfo.processInfo.arguments.contains("-simulateSeasonClose") {
             let season = SeasonStore.ensure(context)
             let made = SeasonReportStore.report(context, season: season)
