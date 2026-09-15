@@ -20,7 +20,7 @@ enum SeasonStore {
     static func ensure(_ context: ModelContext) -> Season {
         if let existing = current(context) { return existing }
         let season = Season()
-        season.name = "Semestre en cours"
+        season.name = "Semestre 1"
         season.startsAt = .now
         context.insert(season)
         try? context.save()

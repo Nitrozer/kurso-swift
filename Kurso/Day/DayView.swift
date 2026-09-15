@@ -16,6 +16,8 @@ struct DayView: View {
     @Query(sort: \Page.createdAt, order: .reverse) private var pages: [Page]
 
     @State private var player: PlayerState?
+    /// Le releve de fin de semestre, quand on le regarde.
+    @State private var reportFor: Season?
     /// Mode partiel : le jeu se tait, la serie gele (§9).
     @State private var isExamMode = false
     @State private var activity: DailyActivity?
@@ -57,6 +59,7 @@ struct DayView: View {
                 }
 
                 if isExamMode { examBanner }
+                if let season = closableSeason { seasonBanner(season) }
 
                 HStack(alignment: .top, spacing: 18) {
                     questsColumn.frame(maxWidth: .infinity)
@@ -76,6 +79,11 @@ struct DayView: View {
         .background(K.paper)
         .onReceive(tick) { now = $0 }
         .task { load() }
+        #if os(iOS)
+        .fullScreenCover(item: $reportFor) { season in seasonReport(season) }
+        #else
+        .sheet(item: $reportFor) { season in seasonReport(season) }
+        #endif
     }
 
     // MARK: En-tête
@@ -477,6 +485,56 @@ struct DayView: View {
 
     // MARK: Appel à réviser
 
+    @ViewBuilder
+    private func seasonReport(_ season: Season) -> some View {
+        SeasonReportView(
+            season: season,
+            report: SeasonReportStore.report(context, season: season),
+            onArchive: {
+                let made = SeasonReportStore.report(context, season: season)
+                SeasonReportStore.close(season, report: made, context: context)
+                reportFor = nil
+            },
+            onClose: { reportFor = nil }
+        )
+    }
+
+    /// Le semestre peut-il se clore ? Une fois le partiel passe, et une seule
+    /// fois : une saison close ne se propose plus.
+    private var closableSeason: Season? {
+        guard let season = SeasonStore.current(context), season.closedAt == nil,
+              let exam = season.examDate, exam < .now else { return nil }
+        return season
+    }
+
+    /// Le semestre est fini : on le dit, on ne l'impose pas.
+    private func seasonBanner(_ season: Season) -> some View {
+        Button { reportFor = season } label: {
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Le semestre est terminé")
+                        .font(KFont.display(19))
+                        .foregroundStyle(K.paperAlt)
+                    Text("Ton relevé t'attend : ce que tu as écrit, et ce qu'il t'en reste.")
+                        .font(KFont.body(12.5, weight: .bold))
+                        .foregroundStyle(K.paperAlt.opacity(0.7))
+                }
+                Spacer(minLength: 8)
+                Text("VOIR LE RELEVÉ")
+                    .font(KFont.body(11.5, weight: .extraBold))
+                    .tracking(1)
+                    .foregroundStyle(K.ink)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(K.reward, in: Capsule())
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity)
+            .background(K.ink, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
     /// On dit ce qui change, sinon le jeu semble casse.
     private var examBanner: some View {
         HStack(spacing: 14) {
@@ -558,6 +616,25 @@ struct DayView: View {
         isExamMode = SeasonStore.isExamMode(context)
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-simulateOpenCahier") { simulateOpenTwice() }
+        if ProcessInfo.processInfo.arguments.contains("-simulateSeasonClose") {
+            let season = SeasonStore.ensure(context)
+            let made = SeasonReportStore.report(context, season: season)
+            let cahiers = SeasonReportStore.courses(context).count
+            SeasonReportStore.close(season, report: made, context: context)
+            let after = SeasonReportStore.current(context)
+            print("[CLOTURE] avant : \(season.name), \(cahiers) cahier(s) actifs")
+            print("[CLOTURE] apres : \(after?.name ?? "aucune") · cahiers actifs=\(SeasonReportStore.courses(context).count)"
+                + " · fige=\(Int((season.finalAcquiredPercent ?? 0) * 100))% \(season.finalPagesCount ?? -1) pages"
+                + " · close=\(season.closedAt != nil)")
+        }
+        if ProcessInfo.processInfo.arguments.contains("-simulateSeasonReport") {
+            let season = SeasonStore.ensure(context)
+            let made = SeasonReportStore.report(context, season: season)
+            print("[SAISON] \(made.acquiredPercent)% · \(made.pages) pages · \(made.writingHours) h · "
+                + "\(made.cardsReviewed) revues · \(made.goldFiches)/\(made.totalFiches) or · "
+                + "mine \(made.mineChanges) · pastilles \(made.states.count)")
+            reportFor = season
+        }
         #endif
         activity = DailyActivityStore.today(context: context)
     }
