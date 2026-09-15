@@ -807,7 +807,10 @@ struct LibraryView: View {
     }
 
     @ViewBuilder private var searchResults: some View {
-        let hits = TextSearch.rank(visiblePages, query: query) { $0.recognizedText }
+        // §4 : le dictionnaire sert a la recherche, jamais a reecrire la page.
+        let hits = TextSearch.rank(visiblePages, query: query) {
+            Abbreviations.searchableText($0.recognizedText)
+        }
         if hits.isEmpty {
             EmptyState(
                 title: "Rien trouvé",
