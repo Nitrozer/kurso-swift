@@ -69,11 +69,17 @@ struct AppShell: View {
         .animation(.snappy(duration: 0.28), value: railShown)
         #if os(iOS)
         .fullScreenCover(isPresented: $showsAccount) {
-            AccountView { showsAccount = false }
+            AccountView(onClose: { showsAccount = false }, onOpenLeague: {
+                showsAccount = false
+                tab = .day
+            })
         }
         #else
         .sheet(isPresented: $showsAccount) {
-            AccountView { showsAccount = false }
+            AccountView(onClose: { showsAccount = false }, onOpenLeague: {
+                showsAccount = false
+                tab = .day
+            })
         }
         #endif
         // Siri a pu demander un onglet avant que la fenetre soit la : on

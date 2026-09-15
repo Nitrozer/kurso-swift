@@ -72,6 +72,23 @@ import Observation
         try adopt(json)
     }
 
+    /// Renouvelle la session. Un jeton Supabase dure une heure : sans cela,
+    /// la ligue se serait tue au bout d'un cours.
+    @discardableResult
+    func refresh() async -> Bool {
+        guard let token = session?.refreshToken else { return false }
+        do {
+            let json = try await call("token", query: "grant_type=refresh_token", body: ["refresh_token": token])
+            try adopt(json)
+            return true
+        } catch {
+            // Un jeton de renouvellement refuse veut dire que la session est
+            // finie pour de bon. On la retire plutot que de boucler dessus.
+            if case Failure.rejected = error { signOut() }
+            return false
+        }
+    }
+
     func signOut() {
         session = nil
         Keychain.clearSession()
@@ -91,8 +108,16 @@ import Observation
         Keychain.writeSession(new)
     }
 
-    private func call(_ path: String, body: [String: Any]) async throws -> [String: Any] {
-        var request = URLRequest(url: SupabaseConfig.url.appending(path: "auth/v1/\(path)"))
+    private func call(_ path: String, query: String? = nil, body: [String: Any]) async throws -> [String: Any] {
+        // `appending(path:)` echappe le point d'interrogation : la requete de
+        // renouvellement partait vers `token%3Fgrant_type=…` et revenait 404.
+        var url = SupabaseConfig.url.appending(path: "auth/v1/\(path)")
+        if let query {
+            var parts = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            parts?.query = query
+            url = parts?.url ?? url
+        }
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

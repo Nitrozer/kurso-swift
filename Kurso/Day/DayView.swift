@@ -15,6 +15,9 @@ struct DayView: View {
     @Query private var activities: [DailyActivity]
     @Query(sort: \Page.createdAt, order: .reverse) private var pages: [Page]
     @Query private var courses: [Course]
+    @Query private var friends: [Friend]
+    @Query private var noteAsks: [NoteAsk]
+    @Query private var dismissedSlots: [DismissedSlot]
 
     @State private var player: PlayerState?
     /// Le releve de fin de semestre, quand on le regarde.
@@ -26,6 +29,20 @@ struct DayView: View {
     @State private var isExamMode = false
     @State private var activity: DailyActivity?
     @State private var now = Date()
+    /// La ligue et les amis, ouverts par la colonne de droite.
+    @State private var showsSocial = {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-openLeague")
+        #else
+        return false
+        #endif
+    }()
+    @State private var social = SocialStore.shared
+    #if os(iOS)
+    /// Les notes qu'on envoie a un camarade. Elles partent par la feuille de
+    /// partage — AirDrop —, jamais par le serveur (§12).
+    @State private var handoff: ExportedFile?
+    #endif
 
     /// Le compte a rebours du cours doit avancer sans qu'on touche l'ecran.
     private let tick = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
@@ -66,6 +83,20 @@ struct DayView: View {
                 if let season = closableSeason { seasonBanner(season) }
                 if let exam = reviewableExam { paperBanner(exam) }
 
+                ForEach(incomingAsks, id: \.id) { ask in
+                    IncomingAskBanner(ask: ask,
+                                      onAccept: { hand(ask) },
+                                      onDecline: { answer(ask, state: "declined") })
+                }
+
+                // On ne signale une seance vide que si quelqu'un peut la
+                // combler : un trou qu'on ne peut pas remplir ne se montre pas.
+                if !isExamMode, let miss = missedClasses.first {
+                    MissedClassBanner(miss: miss, mates: askableMates,
+                                      onAsk: { mate in ask(miss, to: mate) },
+                                      onDismiss: { dismiss(miss) })
+                }
+
                 HStack(alignment: .top, spacing: 18) {
                     questsColumn.frame(maxWidth: .infinity)
                     upcoming.frame(maxWidth: .infinity)
@@ -83,11 +114,21 @@ struct DayView: View {
         .frame(maxWidth: .infinity)
         .background(K.paper)
         .onReceive(tick) { now = $0 }
-        .task { load() }
+        .task {
+            load()
+            await social.sync(context)
+        }
         #if os(iOS)
+        .fullScreenCover(isPresented: $showsSocial) {
+            SocialView { showsSocial = false }
+        }
+        .sheet(item: $handoff) { ShareSheet(url: $0.url) }
         .fullScreenCover(item: $reportFor) { season in seasonReport(season) }
         .fullScreenCover(item: $paperFor) { paper in examPaper(paper) }
         #else
+        .sheet(isPresented: $showsSocial) {
+            SocialView { showsSocial = false }
+        }
         .sheet(item: $reportFor) { season in seasonReport(season) }
         .sheet(item: $paperFor) { paper in examPaper(paper) }
         #endif
@@ -484,24 +525,180 @@ struct DayView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// La ligue demande des amis, qu'aucune donnee ne fournit encore. On dit ce
-    /// qui manque plutot que d'inventer un classement.
+    /// La ligue. Sans ami, elle dit ce qui manque plutot que d'inventer un
+    /// classement ; avec, elle montre le haut du tableau et ou l'on est.
     private var leagueColumn: some View {
         VStack(alignment: .leading, spacing: 9) {
             sectionTitle("Ligue")
-            VStack(alignment: .leading, spacing: 5) {
-                Text("Pas encore d'amis")
-                    .font(KFont.body(12.5, weight: .extraBold))
-                    .foregroundStyle(K.ink)
-                Text("La ligue se joue à douze, entre amis ajoutés. Personne ne descend.")
-                    .font(KFont.body(11, weight: .bold))
-                    .foregroundStyle(K.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
+            Button { showsSocial = true } label: {
+                VStack(alignment: .leading, spacing: 9) {
+                    if leagueStandings.count <= 1 {
+                        Text("Pas encore d'amis")
+                            .font(KFont.body(12.5, weight: .extraBold))
+                            .foregroundStyle(K.ink)
+                        Text("La ligue se joue à douze, entre amis ajoutés. Personne ne descend.")
+                            .font(KFont.body(11, weight: .bold))
+                            .foregroundStyle(K.inkSoft)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        HStack(spacing: 9) {
+                            GradeChip(grade: myGrade)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(myGrade.label)
+                                    .font(KFont.display(16))
+                                    .foregroundStyle(K.ink)
+                                if let rank = myLeagueRank {
+                                    Text("\(rank)\(rank == 1 ? "er" : "e") sur \(leagueStandings.count)")
+                                        .font(KFont.body(11, weight: .bold))
+                                        .foregroundStyle(K.inkSoft)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        VStack(spacing: 5) {
+                            ForEach(Array(leagueStandings.prefix(3).enumerated()), id: \.element.id) { index, standing in
+                                HStack(spacing: 7) {
+                                    Text("\(index + 1)")
+                                        .font(KFont.display(12))
+                                        .foregroundStyle(K.inkSoft)
+                                        .frame(width: 12, alignment: .leading)
+                                    Text(standing.isMe ? "Toi" : standing.name)
+                                        .font(KFont.body(11.5, weight: standing.isMe ? .extraBold : .bold))
+                                        .foregroundStyle(K.ink)
+                                        .lineLimit(1)
+                                    Spacer(minLength: 4)
+                                    Text("\(standing.weeklyXP)")
+                                        .font(KFont.mono(10.5))
+                                        .foregroundStyle(K.inkBody)
+                                }
+                            }
+                        }
+                        Text(LeagueRules.summary(rank: myLeagueRank, grade: myGrade,
+                                                 count: leagueStandings.count))
+                            .font(KFont.body(10.5, weight: .bold))
+                            .foregroundStyle(K.inkSoft)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if !pendingFriendCount.isEmpty {
+                        Text(pendingFriendCount)
+                            .font(KFont.body(10.5, weight: .extraBold))
+                            .foregroundStyle(K.ink)
+                            .padding(.vertical, 4).padding(.horizontal, 9)
+                            .background(K.reward, in: Capsule())
+                            .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2))
+                    }
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .sticker(fill: K.paperAlt, radius: 16,
+                         state: leagueStandings.count <= 1 ? .upcoming : .rest)
             }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .sticker(fill: K.paperAlt, radius: 16, state: .upcoming)
+            .buttonStyle(.plain)
         }
+    }
+
+    // MARK: Ligue et camarades
+
+    private var realFriends: [Friend] { friends.filter { !$0.isClassmateOnly } }
+
+    private var leagueStandings: [LeagueRules.Standing] {
+        var rows = realFriends.map {
+            LeagueRules.Standing(id: $0.remoteID, name: $0.displayName,
+                                 initial: $0.initial, weeklyXP: $0.weeklyXP)
+        }
+        let name = (player?.displayName.isEmpty == false) ? player!.displayName : "Toi"
+        rows.append(LeagueRules.Standing(id: social.myID ?? "moi", name: name,
+                                         weeklyXP: myWeeklyXP, isMe: true))
+        return LeagueRules.table(rows)
+    }
+
+    private var myWeeklyXP: Int {
+        social.weeklyXP(since: LeagueRules.weekStart(for: now), context: context)
+    }
+
+    private var myLeagueRank: Int? {
+        LeagueRules.rank(of: social.myID ?? "moi", in: leagueStandings)
+    }
+
+    private var myGrade: LeagueRules.Grade {
+        LeagueRules.Grade(rawValue: player?.leagueGrade ?? "HB") ?? .hb
+    }
+
+    private var pendingFriendCount: String {
+        let waiting = (try? context.fetch(FetchDescriptor<FriendRequest>()))?
+            .filter { $0.directionToken == "incoming" && $0.stateToken == "pending" }.count ?? 0
+        guard waiting > 0 else { return "" }
+        return waiting == 1 ? "1 demande" : "\(waiting) demandes"
+    }
+
+    /// Ceux a qui l'on peut demander des notes : les amis, et les camarades
+    /// des groupes de classe. Personne d'autre.
+    private var askableMates: [Friend] {
+        friends.sorted { left, right in
+            if left.isClassmateOnly != right.isClassmateOnly { return !left.isClassmateOnly }
+            return left.displayName.localizedCaseInsensitiveCompare(right.displayName) == .orderedAscending
+        }
+    }
+
+    private var incomingAsks: [NoteAsk] {
+        noteAsks.filter { $0.directionToken == "incoming" && $0.stateToken == "pending" }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    /// Les seances ou l'on n'etait pas. Une page rattachee au creneau, ou une
+    /// page du meme cours ecrite ce jour-la, suffit a dire qu'on y etait.
+    private var missedClasses: [MissedClass.Miss] {
+        guard !askableMates.isEmpty else { return [] }
+        let asked = Set(noteAsks.map(\.slotID))
+        let dismissedIDs = Set(dismissedSlots.map(\.slotID))
+        let calendar = Calendar.current
+
+        let inputs = slots.compactMap { slot -> MissedClass.Slot? in
+            guard slot.end <= now, let course = slot.course else { return nil }
+            let written = pages.contains { page in
+                page.course?.id == course.id
+                    && (page.sessionEnd == slot.end
+                        || calendar.isDate(page.createdAt, inSameDayAs: slot.start))
+            }
+            let key = slot.id.uuidString
+            return MissedClass.Slot(id: key, courseName: course.name,
+                                    start: slot.start, end: slot.end,
+                                    hasPage: written,
+                                    settled: asked.contains(key) || dismissedIDs.contains(key))
+        }
+        return MissedClass.detect(slots: inputs, hasClassmates: true, now: now)
+    }
+
+    private func ask(_ miss: MissedClass.Miss, to mate: Friend) {
+        Task { try? await social.askNotes(to: mate, miss: miss, context: context) }
+    }
+
+    private func dismiss(_ miss: MissedClass.Miss) {
+        context.insert(DismissedSlot(slotID: miss.id))
+        try? context.save()
+    }
+
+    private func answer(_ ask: NoteAsk, state: String) {
+        Task { try? await social.answer(ask: ask, state: state, context: context) }
+    }
+
+    /// Repondre : on rassemble les pages du cours demande, ce jour-la, et on
+    /// ouvre la feuille de partage. Rien ne remonte au serveur, qui apprend
+    /// seulement que la demande est close.
+    private func hand(_ ask: NoteAsk) {
+        #if os(iOS)
+        let toSend = NotesHandoff.pages(for: ask, in: pages)
+        Task {
+            guard let url = await PageExporter.write(toSend, fallbackName: ask.courseName) else {
+                try? await social.answer(ask: ask, state: "declined", context: context)
+                return
+            }
+            handoff = ExportedFile(url: url)
+            try? await social.answer(ask: ask, state: "handed", context: context)
+        }
+        #else
+        answer(ask, state: "handed")
+        #endif
     }
 
     // MARK: Appel à réviser

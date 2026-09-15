@@ -40,6 +40,16 @@ import SwiftData
     /// les pages depuis l'installation et restait a 100 % d'usure.
     public var writingSecondsAtLevel: Int = 0
 
+    /// Code ami, attribue par le serveur a la premiere connexion. Vide tant
+    /// qu'aucun compte n'est ouvert : la ligue est facultative, l'application
+    /// entiere fonctionne sans.
+    public var friendCode: String = ""
+    /// Durete de mine : "HB" | "2B" | "4B" | "6B" (§9).
+    public var leagueGrade: String = "HB"
+    /// Derniere fermeture de ligue prise en compte. Sans elle, une promotion
+    /// se rejouerait a chaque ouverture de l'ecran.
+    public var lastLeagueCloseAt: Date?
+
     /// Dernier niveau dont le coffre a ete ouvert. Sans lui, le meme coffre
     /// retomberait a chaque lancement de l'application (§9).
     public var lastChestLevel: Int = 1

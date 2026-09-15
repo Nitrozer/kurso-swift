@@ -11,6 +11,7 @@ import KursoModels
 /// artistique et dans le §12.
 struct AccountView: View {
     var onClose: () -> Void
+    var onOpenLeague: () -> Void = {}
 
     @Environment(\.modelContext) private var context
     @State private var auth = AuthClient.shared
@@ -109,6 +110,8 @@ struct AccountView: View {
                 .font(KFont.body(12, weight: .bold))
                 .foregroundStyle(K.inkBody)
                 .fixedSize(horizontal: false, vertical: true)
+
+            row("Ta ligue et tes amis") { onOpenLeague() }
 
             if auth.isSignedIn {
                 row("Se déconnecter", destructive: true) {

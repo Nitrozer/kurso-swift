@@ -2,6 +2,7 @@
 import Foundation
 import SwiftData
 import PencilKit
+import KursoCore
 import KursoModels
 
 /// Donnees de demonstration, uniquement en debug et uniquement sur demande.
@@ -170,6 +171,62 @@ enum DebugSeed {
         // Les donnees de demo sautent la mise en route : on veut voir l'app.
         player.hasCompletedOnboarding = true
         context.insert(player)
+
+        #if DEBUG
+        // Une ligue peuplee, pour regarder l'ecran sans compte ni reseau.
+        // Aucun de ces amis n'existe cote serveur : le drapeau sert a voir la
+        // mise en page, pas a simuler une synchronisation.
+        if ProcessInfo.processInfo.arguments.contains("-seedLeague") {
+            let me = player
+            me.friendCode = FriendCode.make(from: "demo")
+            me.leagueGrade = "2B"
+            me.displayName = me.displayName.isEmpty ? "Thomas" : me.displayName
+
+            let today = DailyActivityStore.today(context: context)
+            today.xpEarned = 640
+
+            let crowd: [(String, Int, String)] = [
+                ("Léa", 1_240, "4B"), ("Yanis", 980, "2B"), ("Maëlle", 705, "2B"),
+                ("Hugo", 410, "HB"), ("Sofia", 260, "2B"), ("Nils", 95, "HB"),
+            ]
+            for (name, xp, grade) in crowd {
+                let friend = Friend(remoteID: "demo-\(name)", displayName: name,
+                                    friendCode: FriendCode.make(from: name))
+                friend.weeklyXP = xp
+                friend.gradeToken = grade
+                context.insert(friend)
+            }
+
+            let waiting = FriendRequest(remoteID: "demo-req", personRemoteID: "demo-Inès",
+                                        displayName: "Inès", directionToken: "incoming")
+            waiting.friendCode = FriendCode.make(from: "Inès")
+            context.insert(waiting)
+
+            let group = ClassGroup(remoteID: "demo-groupe", name: "Terminale B",
+                                   joinCode: Classmates.joinCode(for: "demo-groupe"))
+            group.memberCount = 7
+            group.members = (try? context.fetch(FetchDescriptor<Friend>())) ?? []
+            context.insert(group)
+
+            // Un creneau d'il y a deux jours sans page : de quoi voir le
+            // bandeau de seance manquee.
+            let skipped = Course(name: "Thermodynamique", colorToken: "pink")
+            context.insert(skipped)
+            let missed = TimeSlot(icsUID: "demo-missed", summary: "Thermodynamique",
+                                  start: Date().addingTimeInterval(-2 * 86_400 - 3 * 3_600),
+                                  end: Date().addingTimeInterval(-2 * 86_400 - 3_600))
+            missed.location = "Amphi C"
+            missed.course = skipped
+            context.insert(missed)
+
+            let asked = NoteAsk(remoteID: "demo-ask", directionToken: "incoming",
+                                personRemoteID: "demo-Léa", displayName: "Léa",
+                                courseName: course.name, slotID: "demo-slot",
+                                slotStart: Date().addingTimeInterval(-2 * 86_400))
+            context.insert(asked)
+            try? context.save()
+        }
+        #endif
 
         try? context.save()
     }
