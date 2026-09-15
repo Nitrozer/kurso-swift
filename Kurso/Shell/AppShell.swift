@@ -46,7 +46,10 @@ struct AppShell: View {
             // Le rail est en graphite : quelle que soit la couleur choisie par
             // iOS pour l'heure, elle etait illisible sur l'un ou sur l'autre.
             // Lui donner un fond clair unique regle les deux cas.
-            K.paper.frame(height: topInset)
+            // En paysage, iPadOS n'annonce aucune marge haute : sans
+            // plancher, la bande disparaissait et le contenu remontait sous
+            // l'heure.
+            K.paper.frame(height: max(topInset, 22))
             body(topInset: topInset)
         }
     }

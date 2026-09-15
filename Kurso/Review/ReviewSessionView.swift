@@ -129,43 +129,173 @@ struct ReviewSessionView: View {
     // MARK: La carte
 
     private func card(_ session: ReviewSession) -> some View {
-        VStack(spacing: 0) {
-            topBar(session)
-
-            Spacer(minLength: 0)
-            VStack(spacing: 20) {
-                Text(prompt(session))
-                    .font(KFont.display(28))
-                    .foregroundStyle(K.ink)
-                    .multilineTextAlignment(.center)
-
-                if isReversed(session) {
-                    Text("À L'ENVERS")
-                        .font(KFont.mono(9.5))
-                        .tracking(1)
-                        .foregroundStyle(K.brand)
-                        .padding(.horizontal, 10).padding(.vertical, 3)
-                        .background(K.brand.opacity(0.12), in: Capsule())
-                }
-
-                // Une carte tiree d'une diapo montre la diapo : la zone reste
-                // couverte tant qu'on n'a pas repondu.
-                if let slide = slideImage {
-                    OcclusionPreview(image: slide,
-                                     hidden: current?.occlusionRect,
-                                     isRevealed: isRevealed)
-                        .frame(maxHeight: 340)
-                        .sticker(fill: K.paperAlt, radius: 18, state: isRevealed ? .done : .rest)
-                }
-
-                if isRevealed { verso }
+        HStack(alignment: .top, spacing: 0) {
+            VStack(spacing: 0) {
+                cardHeader(session)
+                progressTrack(session)
+                Spacer(minLength: 0)
+                cardFace(session)
+                Spacer(minLength: 0)
+                answers
+                    // Les boutons touchaient le bord bas de l'ecran.
+                    .padding(.bottom, 18)
             }
-            .padding(28)
-            .frame(maxWidth: 620)
-            Spacer(minLength: 0)
+            .frame(maxWidth: .infinity)
 
-            answers
+            Rectangle().fill(K.ink.opacity(0.1)).frame(width: 1)
+            comboPanel(session).frame(width: 290)
         }
+    }
+
+    /// L'en-tete : d'ou vient la carte, ce qu'il reste de gommes, ou en est
+    /// le combo, et la position dans la pile.
+    private func cardHeader(_ session: ReviewSession) -> some View {
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(sourceLine)
+                    .font(KFont.mono(10))
+                    .tracking(1.1)
+                    .foregroundStyle(K.inkSoft)
+                Text(current?.page?.title.isEmpty == false ? current!.page!.title : "Carte capturée")
+                    .font(KFont.display(19))
+                    .foregroundStyle(K.ink)
+            }
+            Spacer(minLength: 8)
+            gommes(session.gommes)
+            if session.combo > 1 {
+                Text("×\(session.combo)")
+                    .font(KFont.display(18))
+                    .foregroundStyle(K.ink)
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(K.reward, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(K.ink, lineWidth: 3))
+            }
+            Text(String(format: "%02d", min(session.index + 1, session.cardCount)))
+                .font(KFont.display(16))
+                .foregroundStyle(K.ink)
+                .frame(width: 44, height: 44)
+                .background(K.paperAlt, in: Circle())
+                .overlay(Circle().strokeBorder(K.brand, lineWidth: 3))
+        }
+        .padding(.horizontal, 26)
+        .padding(.vertical, 14)
+    }
+
+    /// La pile, un segment par carte : ce qui est passe, ou on en est, ce qui
+    /// reste. Une barre continue ne dirait pas combien il en reste.
+    private func progressTrack(_ session: ReviewSession) -> some View {
+        HStack(spacing: 6) {
+            ForEach(0..<max(1, session.cardCount), id: \.self) { index in
+                Capsule()
+                    .fill(index < session.index ? K.success
+                          : index == session.index ? K.brand
+                          : K.paperAlt)
+                    .frame(height: 9)
+                    .overlay(Capsule().strokeBorder(K.ink.opacity(index > session.index ? 0.2 : 0), lineWidth: 1.5))
+            }
+        }
+        .padding(.horizontal, 26)
+        .padding(.bottom, 6)
+    }
+
+    /// La carte elle-meme, posee comme un autocollant.
+    private func cardFace(_ session: ReviewSession) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 10) {
+                Text(isReversed(session) ? "À L'ENVERS" : "RECTO / VERSO")
+                    .font(KFont.body(10.5, weight: .extraBold))
+                    .tracking(0.9)
+                    .foregroundStyle(K.brand)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(K.brand.opacity(0.12), in: Capsule())
+                Text(captureLine)
+                    .font(KFont.mono(9.5))
+                    .tracking(0.9)
+                    .foregroundStyle(K.inkSoft)
+                Spacer(minLength: 0)
+            }
+
+            Text(prompt(session))
+                .font(KFont.display(27))
+                .foregroundStyle(K.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let slide = slideImage {
+                OcclusionPreview(image: slide,
+                                 hidden: current?.occlusionRect,
+                                 isRevealed: isRevealed)
+                    .frame(maxHeight: 300)
+            }
+            if isRevealed { verso }
+        }
+        .padding(26)
+        .frame(maxWidth: 680, alignment: .leading)
+        .sticker(fill: K.paperAlt, radius: 22, state: .rest)
+        .padding(.horizontal, 26)
+    }
+
+    /// L'echelle de combo. Montrer les crans qu'on n'a pas atteints est ce qui
+    /// donne envie d'enchainer (§9).
+    private func comboPanel(_ session: ReviewSession) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("ÉCHELLE DE COMBO")
+                .font(KFont.mono(9.5))
+                .tracking(1.1)
+                .foregroundStyle(K.inkSoft)
+
+            ForEach(ComboScale.steps) { step in
+                let reached = step.multiplier == session.combo
+                HStack(spacing: 11) {
+                    Text("×\(step.multiplier)")
+                        .font(KFont.display(14))
+                        .foregroundStyle(K.ink)
+                        .frame(width: 30, alignment: .leading)
+                    Text(step.label)
+                        .font(KFont.body(12, weight: .extraBold))
+                        .foregroundStyle(reached ? K.ink : K.inkBody)
+                        .lineLimit(2)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 11)
+                .background(reached ? K.reward : K.paperAlt,
+                            in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .strokeBorder(reached ? K.ink : K.ink.opacity(0.12), lineWidth: reached ? 2.5 : 1.5))
+            }
+
+            Text(ComboScale.warningTitle)
+                .font(KFont.mono(9.5))
+                .tracking(1.1)
+                .foregroundStyle(K.inkSoft)
+                .padding(.top, 8)
+            Text(ComboScale.warning)
+                .font(KFont.body(12, weight: .bold))
+                .foregroundStyle(K.inkBody)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 12)
+            GribouView(mood: .concentre, size: 96)
+                .frame(maxWidth: .infinity)
+            Text(ComboScale.remaining(answered: session.index, total: session.cardCount))
+                .font(KFont.body(11.5, weight: .extraBold))
+                .foregroundStyle(K.inkSoft)
+                .frame(maxWidth: .infinity)
+        }
+        .padding(20)
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    /// « ALGORITHMIQUE · NŒUD 2 »
+    private var sourceLine: String {
+        let course = current?.page?.course?.name.uppercased() ?? "SANS MATIÈRE"
+        return course
+    }
+
+    private var captureLine: String {
+        guard let page = current?.page else { return "" }
+        return "CAPTURÉE LE \(page.createdAt.formatted(.dateTime.day().month(.twoDigits)))"
     }
 
     /// Le verso. Une carte capturee au geste porte le trace manuscrit, pas du
