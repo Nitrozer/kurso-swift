@@ -131,7 +131,10 @@ struct AppShell: View {
                 .id(sprintCards?.first)
                 .onDisappear { sprintCards = nil }
         case .memory:
-            MemoryMapView()
+            MemoryMapView { ids in
+                sprintCards = ids
+                tab = .review
+            }
         case .cards:
             FichesView()
         default:
