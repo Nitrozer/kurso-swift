@@ -1,0 +1,3 @@
+# Le projet Supabase de Kurso. Rien de scolaire n'y est stocke : voir
+# l'en-tete de la migration `20260915210000_social.sql` et le §12.
+project_id = "kurso-swift"

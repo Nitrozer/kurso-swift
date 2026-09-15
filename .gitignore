@@ -4,3 +4,7 @@ DerivedData/
 *.xcuserstate
 xcuserdata/
 .swiftpm/
+
+# Jetons et cache de la CLI Supabase : jamais dans le depot.
+supabase/.temp/
+supabase/.branches/
