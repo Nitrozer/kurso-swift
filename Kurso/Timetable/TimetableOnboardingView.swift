@@ -129,13 +129,20 @@ struct TimetableOnboardingView: View {
     private var currentStep: some View {
         VStack(alignment: .leading, spacing: 16) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 12) {
                     Text(summaryLine)
                         .font(KFont.body(13.5, weight: .bold))
                         .foregroundStyle(K.ink.opacity(0.75))
 
-                    ForEach(courses) { course in
-                        courseRow(course)
+                    // En grille : six matieres empilees en colonne obligent a
+                    // faire defiler pour voir ce qu'on vient d'importer.
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 260, maximum: 400), spacing: 12)],
+                        spacing: 12
+                    ) {
+                        ForEach(courses) { course in
+                            courseRow(course)
+                        }
                     }
                 }
                 .padding(.horizontal, 28)

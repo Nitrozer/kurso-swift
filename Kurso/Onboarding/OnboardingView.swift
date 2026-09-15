@@ -36,22 +36,42 @@ struct OnboardingView: View {
             case .ready:     readyStep
             }
         }
-        // Une colonne de lecture : etire sur toute la largeur d'un iPad, le
-        // texte devient illisible. L'ecran de connexion, lui, est plein cadre —
-        // il a sa propre mise en page en deux panneaux.
-        .frame(maxWidth: step == .signIn ? .infinity : 620, alignment: .topLeading)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        // Une colonne de lecture : etiree sur toute la largeur d'un iPad, le
+        // texte deviendrait illisible. Mais l'etape des matieres presente une
+        // grille, et merite la place — la maquette la montre pleine largeur.
+        // L'ecran de connexion, lui, est plein cadre : il a sa propre mise en
+        // page en deux panneaux.
+        .frame(maxWidth: readingWidth, alignment: .topLeading)
+        // Centre plutot que colle en haut a gauche : en paysage, la colonne
+        // laissait les trois quarts de l'ecran vides.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .background(K.paper)
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            MetaText("Étape \(number) sur 4")
+        VStack(alignment: .leading, spacing: 12) {
+            // Quatre segments plutot qu'un « etape 2 sur 4 » : on voit d'un
+            // coup d'oeil combien il reste, ce qu'une phrase oblige a lire.
+            HStack(spacing: 7) {
+                ForEach(1...4, id: \.self) { index in
+                    Capsule()
+                        .fill(index <= number ? K.brand : K.ink.opacity(0.12))
+                        .frame(width: 34, height: 7)
+                }
+            }
             DisplayText(title, size: 32)
         }
         .padding(.horizontal, 32)
         .padding(.top, 30)
         .padding(.bottom, 20)
+    }
+
+    private var readingWidth: CGFloat {
+        switch step {
+        case .signIn:    .infinity
+        case .timetable: 1_000
+        default:         620
+        }
     }
 
     private var number: Int {
