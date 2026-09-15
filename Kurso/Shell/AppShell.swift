@@ -28,6 +28,7 @@ struct AppShell: View {
     @State private var sprintCards: [UUID]?
     /// Ce qu'un intent Siri a demande avant que l'interface existe.
     @State private var router = IntentRouter.shared
+    @State private var showsAccount = false
 
     var body: some View {
         // On mesure la marge haute pour poser le rail SOUS la barre d'etat.
@@ -57,7 +58,7 @@ struct AppShell: View {
     private func body(topInset: CGFloat) -> some View {
         HStack(spacing: 0) {
             if railShown {
-                RailView(tab: $tab)
+                RailView(tab: $tab, onAvatar: { showsAccount = true })
                     .transition(.move(edge: .leading))
             }
             content
@@ -66,6 +67,15 @@ struct AppShell: View {
                 .overlay(alignment: .bottomLeading) { railToggle }
         }
         .animation(.snappy(duration: 0.28), value: railShown)
+        #if os(iOS)
+        .fullScreenCover(isPresented: $showsAccount) {
+            AccountView { showsAccount = false }
+        }
+        #else
+        .sheet(isPresented: $showsAccount) {
+            AccountView { showsAccount = false }
+        }
+        #endif
         // Siri a pu demander un onglet avant que la fenetre soit la : on
         // consomme la demande a l'affichage, puis on l'efface.
         .onAppear { consumeIntent() }
@@ -80,6 +90,11 @@ struct AppShell: View {
         }
         #endif
         #if DEBUG
+        .task {
+            guard ProcessInfo.processInfo.arguments.contains("-openAccount") else { return }
+            try? await Task.sleep(for: .seconds(2))
+            showsAccount = true
+        }
         // Rejoue un intent Siri : rien d'autre ne peut le declencher ici.
         .task {
             let args = ProcessInfo.processInfo.arguments

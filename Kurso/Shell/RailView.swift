@@ -33,6 +33,9 @@ enum RailTab: String, CaseIterable, Hashable {
 struct RailView: View {
     @Binding var tab: RailTab
     var avatarLetter: String = "K"
+    /// Le compte et les preferences s'ouvrent depuis l'avatar : c'est la
+    /// seule chose du rail qui ne soit pas une destination.
+    var onAvatar: () -> Void = {}
 
     static let width: CGFloat = 104
 
@@ -97,6 +100,12 @@ struct RailView: View {
     }
 
     private var avatar: some View {
+        Button(action: onAvatar) { avatarFace }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Ton compte")
+    }
+
+    private var avatarFace: some View {
         Circle()
             .fill(K.reward)
             .frame(width: 42, height: 42)
