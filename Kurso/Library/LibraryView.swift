@@ -431,6 +431,9 @@ struct LibraryView: View {
                 Color.clear.task { openFirst(of: openedCourse) }
             } else {
                 if courses.isEmpty { importInvite }
+                GribouBubble(tips: cahierTips, mood: .idle)
+                    .padding(.horizontal, 28)
+                    .padding(.bottom, 14)
                 CahiersGrid(
                     courses: courses,
                     pageCount: { course in pages.filter { $0.course?.id == course.id }.count },
@@ -608,6 +611,48 @@ struct LibraryView: View {
         catch { backupError = "La restauration a échoué. Rien n'a été remplacé." }
     }
     #endif
+
+    /// Ce que Gribou POURRAIT dire sur la planche des cahiers. Il n'en dira
+    /// qu'un, et seulement s'il reste du budget (§12).
+    private var cahierTips: [GribouAdvice.Tip] {
+        var tips: [GribouAdvice.Tip] = []
+
+        let fading = pages.filter { page in
+            let cards = page.cards ?? []
+            guard !cards.isEmpty, page.course?.archivedAt == nil else { return false }
+            let state = Freshness.state(cards: cards.map {
+                Freshness.CardState(dueAt: $0.dueAt, interval: $0.interval)
+            })
+            return state == .endangered || state == .toReview
+        }
+        if fading.count >= 2 {
+            tips.append(.init(
+                id: "cahiers.palissent",
+                kind: .action,
+                text: "\(fading.count) pages pâlissent. Une session les remonte — le plus urgent est en tête de pile."))
+        }
+
+        let drafts = pages.filter { ($0.cards ?? []).isEmpty && $0.course?.archivedAt == nil }
+        if drafts.count >= 3 {
+            tips.append(.init(
+                id: "cahiers.brouillons",
+                kind: .debrief,
+                text: "\(drafts.count) pages n'ont encore aucune carte. Masque une zone pour en tirer une."))
+        }
+
+        tips.append(.init(
+            id: "cahiers.rangement",
+            kind: .mechanic,
+            text: "Tu n'as aucun dossier à créer : l'emploi du temps range chaque page dans le bon cahier, datée et située."))
+
+        if !courses.isEmpty, fading.isEmpty {
+            tips.append(.init(
+                id: "cahiers.ajour",
+                kind: .cheer,
+                text: "Tout est à jour. C'est rare — profites-en pour prendre de l'avance."))
+        }
+        return tips
+    }
 
     private var headerTitle: String {
         guard isInsideCahier else { return "Mes cahiers" }

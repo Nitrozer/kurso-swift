@@ -29,6 +29,9 @@ import SwiftData
     /// Dernier jour ou une session a ete terminee. Sans lui, la serie ne
     /// saurait pas distinguer « deja compte » de « jour suivant » (§9).
     public var lastStreakDay: Date?
+    /// Mecaniques que Gribou a deja expliquees. Une explication ne se
+    /// redonne jamais : c'est ce qui la rend supportable.
+    public var seenTips: [String] = []
     /// Couvertures de cahier achetees. Uniquement de l'apparence (§9).
     public var ownedCovers: [String] = []
     /// Secondes d'ecriture totalisees au dernier passage de niveau.

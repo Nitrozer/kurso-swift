@@ -100,9 +100,46 @@ struct ReviewSessionView: View {
                 .buttonStyle(StickerButtonStyle(kind: .primary))
                 .frame(maxWidth: 280)
 
+            GribouBubble(tips: reviewTips, mood: .concentre)
+                .frame(maxWidth: 520)
+                .padding(.top, 10)
+
             if !mistakeCards.isEmpty { mistakeBookEntry }
         }
         .padding(28)
+    }
+
+    /// Ce que Gribou pourrait dire avant une session.
+    private var reviewTips: [GribouAdvice.Tip] {
+        var tips: [GribouAdvice.Tip] = []
+
+        if mistakeCards.count >= 3 {
+            tips.append(.init(
+                id: "reviser.carnet",
+                kind: .action,
+                text: "\(mistakeCards.count) cartes sont dans ton carnet des ratés. Elles reviennent tant qu'elles ne sont pas sues."))
+        }
+
+        let late = dueCards.filter { $0.dueAt < Date().addingTimeInterval(-7 * 86_400) }
+        if late.count >= 3 {
+            tips.append(.init(
+                id: "reviser.retard",
+                kind: .debrief,
+                text: "\(late.count) cartes attendent depuis plus d'une semaine. Ce sont elles qui coûtent le plus cher à l'examen."))
+        }
+
+        tips.append(.init(
+            id: "reviser.gommes",
+            kind: .mechanic,
+            text: "Une erreur coûte une gomme, jamais ton travail : la carte ratée revient demain, en tête de pile. Une gomme se regagne toutes les 4 h."))
+
+        if dueCards.count <= 5, !dueCards.isEmpty {
+            tips.append(.init(
+                id: "reviser.court",
+                kind: .cheer,
+                text: "Courte session. Deux minutes et c'est plié."))
+        }
+        return tips
     }
 
     /// Le carnet des ratés : les cartes echouees deux fois. A dix, c'est un boss.
