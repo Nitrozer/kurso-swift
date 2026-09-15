@@ -72,6 +72,16 @@ struct ReviewSessionView: View {
                 celebration = won
             }
             // Permet d'inspecter l'ecran de carte sans pouvoir taper.
+            // Rejoue une session finie : aucun tap ne peut y mener ici.
+            if ProcessInfo.processInfo.arguments.contains("-simulateSummary") {
+                begin()
+                var played = session ?? ReviewSession(cardCount: 8, gommes: 5)
+                for index in 0..<played.cardCount {
+                    played.answer(index == 2 ? .failed : .knew)
+                }
+                print("[RESUME] \(played.xpEarned) XP · \(played.index) vues · \(played.mistakes) ratees")
+                session = played
+            }
             if ProcessInfo.processInfo.arguments.contains("-autoStartReview"), session == nil {
                 begin()
                 isRevealed = true
@@ -409,20 +419,74 @@ struct ReviewSessionView: View {
     // MARK: Fin de session
 
     private func summary(_ session: ReviewSession, ranOut: Bool) -> some View {
-        VStack(spacing: 16) {
-            DisplayText(ranOut ? "Plus de gommes" : "Session terminée", size: 30)
-            Text(summaryMessage(session, ranOut: ranOut))
-                .font(KFont.body(14, weight: .bold))
-                .foregroundStyle(K.inkBody)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
 
-            Button("Revenir") { reset() }
-                .buttonStyle(StickerButtonStyle(kind: .primary))
-                .frame(maxWidth: 280)
+            VStack(spacing: 20) {
+                GribouView(mood: ranOut ? .inquiet : (session.isPerfect ? .fier : .concentre), size: 132)
+
+                VStack(spacing: 8) {
+                    DisplayText(ranOut ? "Plus de gommes" : "Session terminée", size: 32)
+                    Text(summaryMessage(session, ranOut: ranOut))
+                        .font(KFont.body(14, weight: .bold))
+                        .foregroundStyle(K.inkBody)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                // Le chiffre seul ne dit rien : trois tuiles disent ce qui
+                // s'est passe, et laquelle merite qu'on y revienne.
+                HStack(spacing: 12) {
+                    summaryTile("\(session.xpEarned)", "XP GAGNÉS", K.reward)
+                    summaryTile("\(session.index)", "CARTES VUES", K.brand)
+                    summaryTile(session.mistakes == 0 ? "—" : "\(session.mistakes)",
+                                "RATÉES", session.mistakes == 0 ? K.success : K.endangered)
+                }
+
+                if ranOut, session.unseenCount > 0 {
+                    // La regle qui compte le plus (§9) : une session
+                    // interrompue ne penalise pas les cartes non vues.
+                    HStack(spacing: 12) {
+                        Text("Les \(session.unseenCount) cartes non vues gardent leur date. Rien n'est perdu.")
+                            .font(KFont.body(12.5, weight: .bold))
+                            .foregroundStyle(K.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity)
+                    .background(K.reward, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(K.ink, lineWidth: 2.5))
+                }
+
+                Button("Revenir") { reset() }
+                    .buttonStyle(StickerButtonStyle(kind: .primary))
+                    .frame(maxWidth: 320)
+            }
+            .padding(30)
+            .frame(maxWidth: 520)
+
+            Spacer(minLength: 0)
         }
-        .padding(28)
-        .frame(maxWidth: 460)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func summaryTile(_ value: String, _ label: String, _ tint: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(KFont.display(26))
+                .foregroundStyle(K.ink)
+            Text(label)
+                .font(KFont.body(9.5, weight: .extraBold))
+                .tracking(0.9)
+                .foregroundStyle(K.inkSoft)
+        }
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity)
+        .background(tint.opacity(0.22), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .strokeBorder(K.ink, lineWidth: 2.5))
     }
 
     private func summaryMessage(_ session: ReviewSession, ranOut: Bool) -> String {
