@@ -128,13 +128,21 @@ struct LibraryView: View {
                 }
                 // La page rattachee a un cours termine, celle qui a de quoi
                 // proposer des cartes.
-                if ProcessInfo.processInfo.arguments.contains("-openFinishedPage") {
-                    openedPage = pages.first { $0.sessionEnd != nil }
+                if ProcessInfo.processInfo.arguments.contains("-openFinishedPage"),
+                   let finished = pages.first(where: { $0.sessionEnd != nil }) {
+                    openedCourse = finished.course
+                    showsLoose = finished.course == nil
+                    openedPage = finished
                 }
                 #endif
             }
             .task(id: pageToOpen?.wrappedValue?.id) {
                 if let requested = pageToOpen?.wrappedValue {
+                    // Le cahier suit la page : sans lui, le panneau listait
+                    // les pages sans matiere — donc aucune — et annoncait
+                    // « 0 page » sur un cahier qui en a six.
+                    openedCourse = requested.course
+                    showsLoose = requested.course == nil
                     openedPage = requested
                     pageToOpen?.wrappedValue = nil
                 }
