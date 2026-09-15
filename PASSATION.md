@@ -359,6 +359,19 @@ Ligue   12 places maximum, uniquement des amis ajoutés par l'utilisateur.
         Une semaine sans rien faire ne sort pas de la ligue.
         Aucun classement public, aucun inconnu, aucune notification de rang.
 
+Code ami   6 signes de l'alphabet de Crockford (ni I, ni L, ni O, ni U).
+           Déterministe à partir de l'identifiant du compte.
+           SEUL moyen de trouver quelqu'un : pas de recherche par prénom,
+           pas de suggestions, aucune liste de comptes.
+
+Classes    40 membres par groupe, 3 groupes par personne au maximum.
+           Un groupe ne partage aucun cours : il sert à ajouter ses camarades
+           et à savoir à qui demander les notes d'une séance manquée.
+
+Séance manquée   créneau terminé depuis ≥ 2 h, sans page, depuis ≤ 7 jours.
+                 2 propositions au maximum, et aucune s'il n'y a personne à
+                 qui demander.
+
 Mine de Gribou
   mineWear = min(1, writingSecondsSinceLevel / 36_000)   // 10 h d'écriture
   remise à 0 par le clip taille_crayon au passage de niveau
@@ -456,6 +469,10 @@ pas un oubli.
 - Pas de télémétrie, pas de publicité, pas de revente de données.
 - **Aucune donnée de cours sur un serveur.** Pages, cartes, audio, PDF : tout
   vit dans l'iCloud de l'utilisateur, jamais ailleurs. Cette règle-là ne bouge pas.
+  La ligue n'y change rien : ce qui circule, c'est un prénom, un code, les XP
+  de la semaine, et qui a demandé quoi à qui. Une demande de notes porte le
+  NOM du cours et la date ; les pages, elles, partent d'appareil à appareil
+  par AirDrop. Aucune table ne comporte de colonne où une page tiendrait.
 
 ---
 
