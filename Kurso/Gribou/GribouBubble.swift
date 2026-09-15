@@ -50,7 +50,7 @@ struct GribouBubble: View {
     @ViewBuilder private var content: some View {
         if let chosen {
                 HStack(alignment: .center, spacing: 0) {
-                    GribouView(mood: mood, size: 58)
+                    GribouView(mood: mood, size: 78)
 
                     // La pointe de la bulle, tournee vers lui.
                     Triangle()

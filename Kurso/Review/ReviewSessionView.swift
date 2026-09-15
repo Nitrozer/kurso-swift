@@ -323,7 +323,7 @@ struct ReviewSessionView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             Spacer(minLength: 12)
-            GribouView(mood: .concentre, size: 96)
+            GribouView(mood: .concentre, size: 124)
                 .frame(maxWidth: .infinity)
             Text(ComboScale.remaining(answered: session.index, total: session.cardCount))
                 .font(KFont.body(11.5, weight: .extraBold))

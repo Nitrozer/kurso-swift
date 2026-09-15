@@ -148,7 +148,7 @@ struct SprintPromptView: View {
     private var footer: some View {
         HStack(spacing: 16) {
             HStack(spacing: 14) {
-                GribouView(mood: .fier, size: 58)
+                GribouView(mood: .fier, size: 78)
                 Text("Kurso découpe une ligne en question et réponse. Il n'écrit pas ton cours, ne le résume pas, et ne garde rien sans ton accord.")
                     .font(KFont.body(12.5, weight: .bold))
                     .foregroundStyle(K.paperAlt.opacity(0.75))

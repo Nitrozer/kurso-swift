@@ -1121,7 +1121,7 @@ struct LibraryView: View {
 
     private var searchNote: some View {
         HStack(spacing: 13) {
-            GribouView(mood: .concentre, size: 46)
+            GribouView(mood: .concentre, size: 64)
             Text("Ton écriture est indexée sur l'appareil, au fil de la frappe du Pencil. Chercher un mot écrit à la main marche aussi bien que du texte tapé — et sans connexion.")
                 .font(KFont.body(12.5, weight: .bold))
                 .foregroundStyle(K.inkBody)

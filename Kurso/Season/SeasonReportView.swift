@@ -238,7 +238,7 @@ struct SeasonReportView: View {
 
     private var mineCard: some View {
         HStack(spacing: 12) {
-            GribouView(mood: .fier, size: 52)
+            GribouView(mood: .fier, size: 72)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Mine changée \(report.mineChanges) fois")
                     .font(KFont.display(15))

@@ -48,7 +48,7 @@ struct SignInView: View {
             Spacer(minLength: 0)
 
             if !wide {
-                GribouView(mood: .fier, size: 130)
+                GribouView(mood: .fier, size: 164)
                     .padding(.bottom, 18)
             }
 
@@ -224,7 +224,7 @@ struct SignInView: View {
     private var rightPanel: some View {
         ZStack {
             DotGrid()
-            GribouView(mood: .fier, size: 230)
+            GribouView(mood: .fier, size: 284)
         }
     }
 

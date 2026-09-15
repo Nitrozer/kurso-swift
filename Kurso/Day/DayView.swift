@@ -762,7 +762,7 @@ struct DayView: View {
             if done, let existing { paperFor = existing } else { isEnteringPaper = true }
         } label: {
             HStack(spacing: 14) {
-                GribouView(mood: .concentre, size: 42)
+                GribouView(mood: .concentre, size: 58)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(done ? "Ton retour sur copie" : "Le partiel est passé")
                         .font(KFont.display(18))
@@ -846,7 +846,7 @@ struct DayView: View {
     /// On dit ce qui change, sinon le jeu semble casse.
     private var examBanner: some View {
         HStack(spacing: 14) {
-            GribouView(mood: .concentre, size: 46)
+            GribouView(mood: .concentre, size: 62)
             VStack(alignment: .leading, spacing: 3) {
                 Text("Mode révision")
                     .font(KFont.display(19))

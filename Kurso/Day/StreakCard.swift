@@ -48,7 +48,7 @@ struct StreakCard: View {
 
             if let gribouMood {
                 HStack(alignment: .center, spacing: 12) {
-                    GribouView(mood: gribouMood, size: 74)
+                    GribouView(mood: gribouMood, size: 104)
                     Text(gribouLine)
                         .font(KFont.body(12.5, weight: .extraBold))
                         .foregroundStyle(K.ink)

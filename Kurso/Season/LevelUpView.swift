@@ -44,7 +44,7 @@ struct LevelUpView: View {
                 .foregroundStyle(K.paperAlt.opacity(0.82))
                 .padding(.top, 2)
 
-            GribouView(mood: .fier, size: 210)
+            GribouView(mood: .fier, size: 260)
                 .padding(.top, 14)
 
             chestRow

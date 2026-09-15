@@ -10,6 +10,9 @@ import KursoCore
 struct GribouView: View {
     let mood: GribouMood
     var size: CGFloat = 150
+    /// Part de la hauteur du cadre que le personnage occupe. En dessous de 1,
+    /// il flotte dans du vide ; au-dessus, la gomme touche le bord.
+    var fill: Float = 1.0
 
     var body: some View {
         RealityView { content in
@@ -28,24 +31,44 @@ struct GribouView: View {
         content.entities.removeAll()
         guard let entity = try? await Entity(named: mood.clipName, in: .main) else { return }
 
-        // Cadrage calcule depuis les bornes reelles du modele : une valeur
-        // devinee coupait la tete, et chaque clip a une amplitude differente.
+        dropOutlineShell(entity)
+
+        // Cadrer sur la HAUTEUR, une fois la coque retiree. Se caler sur la
+        // plus grande dimension revenait au meme tant que le personnage etait
+        // debout, mais laissait la moitie du carre vide des qu'il s'inclinait :
+        // un crayon est trois fois plus haut que large.
         let bounds = entity.visualBounds(relativeTo: nil)
-        let extent = max(bounds.extents.x, bounds.extents.y, bounds.extents.z)
-        if extent > 0 {
-            entity.scale = .init(repeating: 1.6 / extent)
-        }
-        let center = bounds.center * (extent > 0 ? 1.6 / extent : 1)
+        let height = max(bounds.extents.y, 0.0001)
+        let scale = 2.0 * fill / height
+        entity.scale = .init(repeating: scale)
+        let center = bounds.center * scale
         entity.position = .init(x: -center.x, y: -center.y, z: -center.z)
 
-        // Les clips sont des boucles : la respiration de 2,6 s au repos, les
-        // autres à leur propre rythme. Rien ne se synchronise, c'est voulu.
-        for animation in entity.availableAnimations {
-            entity.playAnimation(animation.repeat(), transitionDuration: 0.3, startsPaused: false)
+        // UNE SEULE animation. RealityKit expose la meme deux fois — « global
+        // scene animation » et « default subtree animation » — et les jouer
+        // toutes les deux superposait le clip sur lui-meme.
+        if let clip = entity.availableAnimations.first {
+            entity.playAnimation(clip.repeat(), transitionDuration: 0.3, startsPaused: false)
         }
 
         let anchor = Entity()
         anchor.addChild(entity)
         content.add(anchor)
+    }
+
+    /// Retire la coque de contour.
+    ///
+    /// C'est une coque retournee, plus grande que le personnage, qui donne le
+    /// trait noir dans Blender. RealityKit ne sait pas la rendre : elle est
+    /// soit eliminee, soit dessinee DEVANT — et Gribou vire alors au noir
+    /// complet. Autant ne pas la charger : elle pese 4 180 triangles sur les
+    /// 11 926 du modele, plus d'un tiers, pour un effet qu'on ne voyait pas.
+    @MainActor
+    private func dropOutlineShell(_ entity: Entity) {
+        for child in entity.children where child.name.localizedCaseInsensitiveContains("contour") {
+            child.isEnabled = false
+            child.removeFromParent()
+        }
+        for child in entity.children { dropOutlineShell(child) }
     }
 }

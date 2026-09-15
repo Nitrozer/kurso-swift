@@ -191,7 +191,7 @@ struct ExamPaperView: View {
 
     private func banner(_ text: String) -> some View {
         HStack(spacing: 14) {
-            GribouView(mood: .inquiet, size: 44)
+            GribouView(mood: .inquiet, size: 58)
             Text(text)
                 .font(KFont.display(16))
                 .foregroundStyle(K.ink)

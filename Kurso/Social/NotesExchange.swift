@@ -23,7 +23,7 @@ struct MissedClassBanner: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            GribouView(mood: .idle, size: 42)
+            GribouView(mood: .idle, size: 58)
             VStack(alignment: .leading, spacing: 3) {
                 Text(MissedClass.sentence(miss))
                     .font(KFont.display(18))
@@ -142,7 +142,7 @@ struct IncomingAskBanner: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            GribouView(mood: .fier, size: 42)
+            GribouView(mood: .fier, size: 58)
             VStack(alignment: .leading, spacing: 3) {
                 Text(MissedClass.invitation(from: ask.displayName,
                                             courseName: ask.courseName,
