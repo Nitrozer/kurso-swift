@@ -40,6 +40,8 @@ struct LibraryView: View {
     @State private var isImporting = false
     @State private var isPickingPDF = false
     @State private var pageToDelete: Page?
+    /// Le cahier qu'un intent Siri a demande, par identifiant.
+    @State private var router = IntentRouter.shared
     #if os(iOS)
     @State private var exported: ExportedFile?
     @State private var pendingPDF: PickedPDF?
@@ -137,6 +139,9 @@ struct LibraryView: View {
                     pageToOpen?.wrappedValue = nil
                 }
             }
+            // Siri ne designe qu'un identifiant : c'est ici qu'on retrouve le
+            // cahier, et jamais l'intent qui lit son contenu.
+            .task(id: router.pendingCourseID) { openRequestedCahier() }
     }
 
     @ViewBuilder private var content: some View {
@@ -283,6 +288,15 @@ struct LibraryView: View {
         showsLoose = false
     }
     #endif
+
+    private func openRequestedCahier() {
+        guard let wanted = router.pendingCourseID else { return }
+        router.pendingCourseID = nil
+        guard let course = courses.first(where: { $0.id == wanted }) else { return }
+        openedCourse = course
+        showsLoose = false
+        openFirst(of: course)
+    }
 
     private func closeCahier() {
         #if os(iOS)
