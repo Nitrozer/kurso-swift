@@ -42,6 +42,13 @@ struct LibraryView: View {
     @State private var pageToDelete: Page?
     /// Le cahier qu'un intent Siri a demande, par identifiant.
     @State private var router = IntentRouter.shared
+    /// La derniere page ouverte, pour y revenir au lancement suivant.
+    ///
+    /// Dans les reglages de l'appareil et non dans `PlayerState` : c'est une
+    /// commodite locale, pas une donnee a synchroniser. Reprendre sur l'iPad
+    /// la page qu'on lisait sur le Mac n'aurait aucun sens.
+    @AppStorage("kurso.lastOpenedPage") private var lastOpenedPage: String = ""
+    @State private var hasResumed = false
     #if os(iOS)
     @State private var backupFile: ExportedFile?
     @State private var isPickingBackup = false
@@ -165,6 +172,10 @@ struct LibraryView: View {
                 }
                 #endif
             }
+            .onChange(of: openedPage?.id) { _, id in
+                lastOpenedPage = id?.uuidString ?? ""
+            }
+            .task { resumeIfPossible() }
             .task(id: pageToOpen?.wrappedValue?.id) {
                 if let requested = pageToOpen?.wrappedValue {
                     // Le cahier suit la page : sans lui, le panneau listait
@@ -346,6 +357,27 @@ struct LibraryView: View {
         showsLoose = false
     }
     #endif
+
+    /// Rouvre la derniere page ecrite, une seule fois par lancement.
+    ///
+    /// On ne s'impose pas : si quelque chose a deja demande une page — un
+    /// intent Siri, l'ecran Jour, un drapeau de debug — on lui laisse la main.
+    private func resumeIfPossible() {
+        guard !hasResumed else { return }
+        hasResumed = true
+        guard openedPage == nil, pageToOpen?.wrappedValue == nil,
+              router.pendingCourseID == nil,
+              let id = UUID(uuidString: lastOpenedPage),
+              let page = pages.first(where: { $0.id == id }),
+              page.course?.archivedAt == nil
+        else { return }
+        openedCourse = page.course
+        showsLoose = page.course == nil
+        openedPage = page
+        #if DEBUG
+        print("[REPRISE] \(page.title.isEmpty ? "sans titre" : page.title)")
+        #endif
+    }
 
     private func openRequestedCahier() {
         guard let wanted = router.pendingCourseID else { return }

@@ -708,6 +708,9 @@ struct DayView: View {
         // ne se reconstitue pas apres coup, et c'est lui que le retour sur
         // copie rapproche des exercices rates.
         ExamPaperStore.snapshotIfNeeded(context)
+        // Les rappels se reposent a chaque ouverture : les echeances bougent,
+        // et remplacer coute moins cher que de suivre ce qui a change.
+        Task { await ReminderScheduler.refresh(context) }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-simulateOpenCahier") { simulateOpenTwice() }
         if ProcessInfo.processInfo.arguments.contains("-simulateExamPaper") {
