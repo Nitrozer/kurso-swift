@@ -11,6 +11,8 @@ import KursoModels
 struct SprintPromptView: View {
     let page: Page
     let proposals: [CardProposer.Proposal]
+    /// Demande depuis le menu de la page, et non a la fin d'un cours.
+    var isManual = false
     /// Rend les cartes retenues, prêtes pour le sprint.
     var onStart: ([Card]) -> Void
     var onSkip: () -> Void
@@ -49,7 +51,9 @@ struct SprintPromptView: View {
                     .tracking(1.2)
                     .foregroundStyle(K.inkSoft)
                 DisplayText("\(proposals.count) carte\(proposals.count > 1 ? "s" : "") tirée\(proposals.count > 1 ? "s" : "") de ce que tu viens d'écrire.", size: 32)
-                Text("Garde, modifie, ou jette. C'est le seul moment où Kurso propose des cartes tout seul — et jamais plus de trois.")
+                Text(isManual
+                     ? "Garde, modifie, ou jette. Kurso découpe ce que tu as écrit, il n'invente rien — et jamais plus de trois."
+                     : "Garde, modifie, ou jette. C'est le seul moment où Kurso propose des cartes tout seul — et jamais plus de trois.")
                     .font(KFont.body(13.5, weight: .bold))
                     .foregroundStyle(K.inkBody)
                     .fixedSize(horizontal: false, vertical: true)
@@ -66,7 +70,7 @@ struct SprintPromptView: View {
     private var meta: String {
         let hour = Date.now.formatted(.dateTime.hour().minute())
         let course = page.course?.name.uppercased() ?? "SANS MATIÈRE"
-        return "FIN DE SÉANCE · \(hour) · \(course)"
+        return "\(isManual ? "À LA DEMANDE" : "FIN DE SÉANCE") · \(hour) · \(course)"
     }
 
     private var sprintBadge: some View {

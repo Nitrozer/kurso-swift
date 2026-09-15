@@ -15,6 +15,8 @@ struct PageEditorView: View {
     var onOpenSlide: (Page) -> Void = { _ in }
     /// Demande venue du panneau : ouvrir le selecteur d'image.
     var addImageRequest: UUID?
+    /// Demander des cartes a la main, sans attendre la fin d'un cours.
+    var onProposeCards: (Page) -> Void = { _ in }
     @Environment(\.modelContext) private var context
 
     @State private var drawing: PKDrawing
@@ -87,11 +89,13 @@ struct PageEditorView: View {
     init(page: Page,
          onClose: @escaping () -> Void = {},
          onOpenSlide: @escaping (Page) -> Void = { _ in },
-         addImageRequest: UUID? = nil) {
+         addImageRequest: UUID? = nil,
+         onProposeCards: @escaping (Page) -> Void = { _ in }) {
         _page = Bindable(page)
         self.onClose = onClose
         self.onOpenSlide = onOpenSlide
         self.addImageRequest = addImageRequest
+        self.onProposeCards = onProposeCards
         let stored = page.drawing
         let hasStored = !(stored ?? Data()).isEmpty
         let loaded = hasStored ? try? PKDrawing(data: stored!) : PKDrawing()
@@ -253,12 +257,19 @@ struct PageEditorView: View {
         .task {
             load()
             #if DEBUG
+            #if os(iOS)
+            // Rejoue l'entree de menu, qu'aucun tap ne peut atteindre ici.
+            if ProcessInfo.processInfo.arguments.contains("-simulateProposeCards") {
+                try? await Task.sleep(for: .seconds(4))
+                print("[KURSO] propositions=\(cardProposals.count)")
+                proposeCards()
+            }
+            #endif
             // Rejoue le geste complet : on ecrit, puis on appuie sur retour.
             if ProcessInfo.processInfo.arguments.contains("-simulateBack") {
                 try? await Task.sleep(for: .seconds(6))
                 print("[KURSO] --- appui sur retour ---")
-                persist()
-                onClose()
+                closePage()
             }
             #endif
         }
@@ -341,6 +352,16 @@ struct PageEditorView: View {
         }
     }
 
+    /// Quitter la page. Le retour peut ouvrir les propositions de cartes sans
+    /// demonter l'editeur : la palette resterait alors au-dessus d'elles.
+    private func closePage() {
+        persist()
+        #if os(iOS)
+        canvasHandle.canvas?.resignFirstResponder()
+        #endif
+        onClose()
+    }
+
     /// L'en-tete : le titre, UNE action, et tout le reste range.
     ///
     /// Elle portait sept boutons cote a cote — audio, volet, papier, image,
@@ -350,8 +371,7 @@ struct PageEditorView: View {
     private var header: some View {
         HStack(spacing: 12) {
             Button {
-                persist()
-                onClose()
+                closePage()
             } label: {
                 ChevronGlyph()
                     .stroke(K.ink, style: StrokeStyle(lineWidth: 2.6, lineCap: .round, lineJoin: .round))
@@ -675,6 +695,11 @@ struct PageEditorView: View {
                     isCapturingRegion.toggle()
                 }
             }
+            // La proposition de fin de cours ne s'ouvre que dans les 45 min
+            // qui suivent un creneau : sans cette entree, une page relue le
+            // soir ou sans matiere n'y avait jamais droit.
+            Button("Proposer des cartes") { proposeCards() }
+                .disabled(cardProposals.isEmpty)
 
             Divider()
 
@@ -719,6 +744,22 @@ struct PageEditorView: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
     }
+
+    /// Les cartes que la page donnerait si on les demandait maintenant.
+    /// Vide tant que la reconnaissance n'a rien trouve a decouper.
+    private var cardProposals: [CardProposer.Proposal] {
+        CardProposer.propose(from: page.recognizedText ?? "")
+    }
+
+    /// Ouvre les propositions. La palette PencilKit reste au-dessus de tout
+    /// tant que le canevas garde le premier repondant : elle recouvrait les
+    /// boutons de l'ecran des cartes.
+    private func proposeCards() {
+        persist()
+        canvasHandle.canvas?.resignFirstResponder()
+        onProposeCards(page)
+    }
+
 
     private func exportCurrent() {
         PDFAssetLookup.remember(assets)

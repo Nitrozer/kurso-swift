@@ -46,6 +46,8 @@ struct LibraryView: View {
     @State private var exportProgress: Double?
     /// La page dont la seance vient de finir, et ses cartes proposees.
     @State private var sprintFor: Page?
+    /// Demande depuis le menu de la page plutot qu'a la fin d'un cours.
+    @State private var sprintWasManual = false
     /// Ou deposer les diapos qu'on est en train de choisir.
     @State private var insertionBounds: (after: Double?, before: Double?) = (nil, nil)
     @State private var pickedPhoto: PhotosPickerItem?
@@ -122,6 +124,11 @@ struct LibraryView: View {
                 if ProcessInfo.processInfo.arguments.contains("-openFirstPage") {
                     openedPage = pages.first
                 }
+                // La page rattachee a un cours termine, celle qui a de quoi
+                // proposer des cartes.
+                if ProcessInfo.processInfo.arguments.contains("-openFinishedPage") {
+                    openedPage = pages.first { $0.sessionEnd != nil }
+                }
                 #endif
             }
             .task(id: pageToOpen?.wrappedValue?.id) {
@@ -177,7 +184,13 @@ struct LibraryView: View {
                 PageEditorView(page: page,
                                onClose: { closeCahier() },
                                onOpenSlide: { openedPage = $0 },
-                               addImageRequest: addImageRequest)
+                               addImageRequest: addImageRequest,
+                               onProposeCards: { asked in
+                                   #if os(iOS)
+                                   sprintWasManual = true
+                                   sprintFor = asked
+                                   #endif
+                               })
                     .id(page.id)
             }
             .animation(.snappy(duration: 0.28), value: navigatorShown)
@@ -185,6 +198,32 @@ struct LibraryView: View {
             library
         }
         }
+        #if os(iOS)
+        .fullScreenCover(item: $sprintFor) { page in
+            SprintPromptView(
+                page: page,
+                proposals: CardProposer.propose(from: page.recognizedText ?? ""),
+                isManual: sprintWasManual,
+                onStart: { cards in
+                    page.sprintProposedAt = .now
+                    try? context.save()
+                    closeAfterSprint()
+                    onStartSprint(cards.map(\.id))
+                },
+                onSkip: {
+                    // Demande a la main : on refuse juste cette fois, et la
+                    // proposition de fin de cours reste due.
+                    if !sprintWasManual {
+                        page.sprintProposedAt = .now
+                        try? context.save()
+                        closeAfterSprint()
+                    } else {
+                        sprintFor = nil
+                    }
+                }
+            )
+        }
+        #endif
         .confirmationDialog(
             "Supprimer cette page ?",
             isPresented: Binding(get: { pageToDelete != nil },
@@ -235,14 +274,26 @@ struct LibraryView: View {
     }
     #endif
 
+    #if os(iOS)
+    /// Apres un sprint : on sort du cahier, la revision prend la main.
+    private func closeAfterSprint() {
+        sprintFor = nil
+        openedPage = nil
+        openedCourse = nil
+        showsLoose = false
+    }
+    #endif
+
     private func closeCahier() {
         #if os(iOS)
         // Fin de seance : c'est le moment de proposer trois cartes, pas
         // pendant qu'on ecrit.
         if let page = openedPage, shouldPropose(for: page) {
+            sprintWasManual = false
             sprintFor = page
             return
         }
+
         #endif
         openedPage = nil
         openedCourse = nil
@@ -288,31 +339,6 @@ struct LibraryView: View {
         }
         #if os(iOS)
         .overlay { ExportProgress(value: exportProgress) }
-        #endif
-        #if os(iOS)
-        .fullScreenCover(item: $sprintFor) { page in
-            SprintPromptView(
-                page: page,
-                proposals: CardProposer.propose(from: page.recognizedText ?? ""),
-                onStart: { cards in
-                    page.sprintProposedAt = .now
-                    try? context.save()
-                    sprintFor = nil
-                    openedPage = nil
-                    openedCourse = nil
-                    showsLoose = false
-                    onStartSprint(cards.map(\.id))
-                },
-                onSkip: {
-                    page.sprintProposedAt = .now
-                    try? context.save()
-                    sprintFor = nil
-                    openedPage = nil
-                    openedCourse = nil
-                    showsLoose = false
-                }
-            )
-        }
         #endif
         .sheet(isPresented: $isImporting) {
             TimetableOnboardingView()
