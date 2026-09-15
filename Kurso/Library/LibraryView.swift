@@ -1,6 +1,9 @@
 import SwiftUI
 import SwiftData
 import PhotosUI
+#if os(iOS)
+import UIKit
+#endif
 import UniformTypeIdentifiers
 import KursoCore
 import KursoModels
@@ -244,6 +247,7 @@ struct LibraryView: View {
                                onClose: { closeCahier() },
                                onOpenSlide: { openedPage = $0 },
                                addImageRequest: addImageRequest,
+                               isCoveredBySheet: sheetIsUp,
                                onProposeCards: { asked in
                                    #if os(iOS)
                                    sprintWasManual = true
@@ -316,6 +320,68 @@ struct LibraryView: View {
             // Une page emporte ses cartes : il faut le dire avant, pas apres.
             Text(deletionWarning)
         }
+        #if DEBUG
+        // Rejoue le geste signale : une page est ouverte, on demande un PDF
+        // depuis le « + » du panneau. La feuille doit s'ouvrir PAR-DESSUS
+        // l'editeur, sans qu'on ait a revenir aux cahiers.
+        .task {
+            #if os(iOS)
+            guard ProcessInfo.processInfo.arguments.contains("-simulatePDFOverPage") else { return }
+            try? await Task.sleep(for: .seconds(5))
+            print("[PDF] page ouverte=\(openedPage != nil) — on demande le selecteur")
+            pendingPDF = PickedPDF(url: URL(filePath: "/tmp/Cours de maths.pdf"))
+            #endif
+        }
+        #endif
+        // TOUTES les presentations vivent ici, sur le Group, et jamais sur
+        // `library` : le « + » du panneau des pages s'utilise alors qu'une
+        // page est ouverte, moment ou `library` n'est pas dans la
+        // hierarchie. Une feuille qu'on lui accroche ne s'ouvre donc
+        // jamais — il fallait revenir a la planche des cahiers pour la voir
+        // apparaitre. Troisieme fois que ce piege se referme ici.
+        .sheet(item: $customising) { course in
+            CahierSettings(course: course) { customising = nil }
+        }
+        #if os(iOS)
+        .overlay { ExportProgress(value: exportProgress) }
+        #endif
+        .sheet(isPresented: $isImporting) {
+            TimetableOnboardingView()
+        }
+        #if os(iOS)
+        .sheet(item: $exported) { ShareSheet(url: $0.url) }
+        .photosPicker(isPresented: Binding(
+            get: { photoPosition != nil },
+            set: { if !$0 { photoPosition = nil } }
+        ), selection: $pickedPhoto, matching: .images)
+        .onChange(of: pickedPhoto) { _, item in
+            guard let item, let position = photoPosition else { return }
+            Task { await adoptPhoto(item, at: position) }
+        }
+        #endif
+        .fileImporter(isPresented: $isPickingPDF, allowedContentTypes: [.pdf]) { result in
+            guard case .success(let url) = result else { return }
+            #if os(iOS)
+            // On ne depose rien avant d'avoir demande quelles pages garder.
+            pendingPDF = PickedPDF(url: url)
+            #endif
+        }
+        #if os(iOS)
+        .sheet(item: $pendingPDF) { picked in
+            PDFPagePicker(
+                url: picked.url,
+                onCancel: { pendingPDF = nil },
+                onConfirm: { chosen in
+                    let created = try? PDFImporter.importFile(
+                        at: picked.url, course: selectedCourse,
+                        selected: chosen, between: insertionBounds, context: context)
+                    insertionBounds = (nil, nil)
+                    pendingPDF = nil
+                    openedPage = created?.first
+                }
+            )
+        }
+        #endif
     }
 
     /// Entrer dans un cahier ouvre sa feuille. Vide, on lui en cree une :
@@ -385,6 +451,16 @@ struct LibraryView: View {
         #endif
     }
 
+    /// Une feuille est-elle ouverte par-dessus la page ?
+    private var sheetIsUp: Bool {
+        #if os(iOS)
+        pendingPDF != nil || photoPosition != nil || isPickingPDF
+            || sprintFor != nil || exported != nil || customising != nil
+        #else
+        customising != nil
+        #endif
+    }
+
     private func openRequestedCahier() {
         guard let wanted = router.pendingCourseID else { return }
         router.pendingCourseID = nil
@@ -447,49 +523,6 @@ struct LibraryView: View {
                 )
             }
         }
-        .sheet(item: $customising) { course in
-            CahierSettings(course: course) { customising = nil }
-        }
-        #if os(iOS)
-        .overlay { ExportProgress(value: exportProgress) }
-        #endif
-        .sheet(isPresented: $isImporting) {
-            TimetableOnboardingView()
-        }
-        #if os(iOS)
-        .sheet(item: $exported) { ShareSheet(url: $0.url) }
-        .photosPicker(isPresented: Binding(
-            get: { photoPosition != nil },
-            set: { if !$0 { photoPosition = nil } }
-        ), selection: $pickedPhoto, matching: .images)
-        .onChange(of: pickedPhoto) { _, item in
-            guard let item, let position = photoPosition else { return }
-            Task { await adoptPhoto(item, at: position) }
-        }
-        #endif
-        .fileImporter(isPresented: $isPickingPDF, allowedContentTypes: [.pdf]) { result in
-            guard case .success(let url) = result else { return }
-            #if os(iOS)
-            // On ne depose rien avant d'avoir demande quelles pages garder.
-            pendingPDF = PickedPDF(url: url)
-            #endif
-        }
-        #if os(iOS)
-        .sheet(item: $pendingPDF) { picked in
-            PDFPagePicker(
-                url: picked.url,
-                onCancel: { pendingPDF = nil },
-                onConfirm: { chosen in
-                    let created = try? PDFImporter.importFile(
-                        at: picked.url, course: selectedCourse,
-                        selected: chosen, between: insertionBounds, context: context)
-                    insertionBounds = (nil, nil)
-                    pendingPDF = nil
-                    openedPage = created?.first
-                }
-            )
-        }
-        #endif
     }
 
     /// Tant qu'aucun emploi du temps n'est importe, les pages ne peuvent pas se

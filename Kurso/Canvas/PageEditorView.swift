@@ -17,6 +17,10 @@ struct PageEditorView: View {
     var addImageRequest: UUID?
     /// Demander des cartes a la main, sans attendre la fin d'un cours.
     var onProposeCards: (Page) -> Void = { _ in }
+    /// Une feuille s'ouvre par-dessus : le canevas doit rendre le premier
+    /// repondant, sans quoi la palette PencilKit flotte au-dessus d'elle.
+    /// Seul l'editeur connait son canevas, d'ou ce signal venu du parent.
+    var isCoveredBySheet: Bool = false
     @Environment(\.modelContext) private var context
 
     @State private var drawing: PKDrawing
@@ -90,11 +94,13 @@ struct PageEditorView: View {
          onClose: @escaping () -> Void = {},
          onOpenSlide: @escaping (Page) -> Void = { _ in },
          addImageRequest: UUID? = nil,
+         isCoveredBySheet: Bool = false,
          onProposeCards: @escaping (Page) -> Void = { _ in }) {
         _page = Bindable(page)
         self.onClose = onClose
         self.onOpenSlide = onOpenSlide
         self.addImageRequest = addImageRequest
+        self.isCoveredBySheet = isCoveredBySheet
         self.onProposeCards = onProposeCards
         let stored = page.drawing
         let hasStored = !(stored ?? Data()).isEmpty
@@ -274,6 +280,13 @@ struct PageEditorView: View {
             #endif
         }
         #if os(iOS)
+        .onChange(of: isCoveredBySheet) { _, covered in
+            if covered {
+                canvasHandle.canvas?.resignFirstResponder()
+            } else if !titleFocused, !isMasking {
+                canvasHandle.canvas?.becomeFirstResponder()
+            }
+        }
         // Le champ du titre prend le premier repondant, et la palette
         // PencilKit disparait avec. On la rend des qu'on quitte le champ.
         .onChange(of: titleFocused) { _, focused in
