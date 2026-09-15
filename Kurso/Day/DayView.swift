@@ -540,6 +540,9 @@ struct DayView: View {
                             .font(KFont.body(11, weight: .bold))
                             .foregroundStyle(K.inkSoft)
                             .fixedSize(horizontal: false, vertical: true)
+                        // Sans invitation ecrite, rien ne disait que la carte
+                        // s'ouvrait : elle se lisait comme un simple avis.
+                        callToAction("AJOUTER UN AMI", filled: true)
                     } else {
                         HStack(spacing: 9) {
                             GradeChip(grade: myGrade)
@@ -578,6 +581,7 @@ struct DayView: View {
                             .font(KFont.body(10.5, weight: .bold))
                             .foregroundStyle(K.inkSoft)
                             .fixedSize(horizontal: false, vertical: true)
+                        callToAction("VOIR LA LIGUE", filled: false)
                     }
                     if !pendingFriendCount.isEmpty {
                         Text(pendingFriendCount)
@@ -590,11 +594,28 @@ struct DayView: View {
                 }
                 .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .sticker(fill: K.paperAlt, radius: 16,
-                         state: leagueStandings.count <= 1 ? .upcoming : .rest)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressableCardStyle())
         }
+    }
+
+    /// Le geste qu'on attend, ecrit. Une carte qui s'ouvre doit le dire : le
+    /// chevron du titre de section est sur toutes les colonnes, il ne
+    /// distingue rien.
+    private func callToAction(_ label: String, filled: Bool) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(KFont.body(10, weight: .extraBold))
+                .tracking(0.9)
+                .foregroundStyle(K.ink)
+            ChevronGlyph(pointsRight: true)
+                .stroke(K.ink, style: StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round))
+                .frame(width: 7, height: 7)
+        }
+        .padding(.vertical, 6).padding(.horizontal, 11)
+        .background(filled ? K.reward : .clear, in: Capsule())
+        .overlay(Capsule().strokeBorder(K.ink, lineWidth: filled ? 2.2 : 2))
+        .padding(.top, 2)
     }
 
     // MARK: Ligue et camarades

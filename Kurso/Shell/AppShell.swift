@@ -9,6 +9,10 @@ import KursoModels
 /// et refusent d'etre stylees — elles laissaient la typographie et les pastilles
 /// d'iPadOS visibles au milieu de la direction artistique.
 struct AppShell: View {
+    /// Le prenom du joueur, pour l'avatar du rail. Sans cette requete, le rail
+    /// affichait le « K » de Kurso a la place de l'initiale — et l'avatar ne
+    /// ressemblait pas a celui de l'ecran du compte.
+    @Query private var players: [PlayerState]
     @State private var pageToOpen: Page?
     @State private var tab: RailTab = {
         #if DEBUG
@@ -29,6 +33,13 @@ struct AppShell: View {
     /// Ce qu'un intent Siri a demande avant que l'interface existe.
     @State private var router = IntentRouter.shared
     @State private var showsAccount = false
+
+    /// L'initiale du prenom, ou le « K » de Kurso tant qu'aucun prenom n'est
+    /// donne : un avatar vide vaut moins qu'une marque.
+    private var avatarLetter: String {
+        let name = players.first?.displayName.trimmingCharacters(in: .whitespaces) ?? ""
+        return name.isEmpty ? "K" : String(name.prefix(1)).uppercased()
+    }
 
     var body: some View {
         // On mesure la marge haute pour poser le rail SOUS la barre d'etat.
@@ -58,7 +69,7 @@ struct AppShell: View {
     private func body(topInset: CGFloat) -> some View {
         HStack(spacing: 0) {
             if railShown {
-                RailView(tab: $tab, onAvatar: { showsAccount = true })
+                RailView(tab: $tab, avatarLetter: avatarLetter, onAvatar: { showsAccount = true })
                     .transition(.move(edge: .leading))
             }
             content

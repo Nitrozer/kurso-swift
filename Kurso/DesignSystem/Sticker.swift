@@ -136,3 +136,16 @@ struct StickerButtonStyle: ButtonStyle {
         }
     }
 }
+
+/// Une carte entiere qui s'ouvre. `.buttonStyle(.plain)` ne donne aucun retour
+/// au doigt : rien ne bougeait, et la carte ne se lisait pas comme un bouton.
+struct PressableCardStyle: ButtonStyle {
+    var fill: Color = K.paperAlt
+    var radius: CGFloat = 16
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .sticker(fill: fill, radius: radius, state: configuration.isPressed ? .pressed : .rest)
+            .animation(.spring(duration: DesignTokens.Motion.pressSeconds), value: configuration.isPressed)
+    }
+}
