@@ -47,7 +47,9 @@ struct MemoryMapView: View {
                     graphCanvas
                         .frame(height: max(520, CGFloat(layout.nodes.count) * Self.rowHeight))
                         .padding(.horizontal, 30)
-                        .padding(.vertical, 40)
+                        .padding(.top, 40)
+                        // Le dernier noeud passait sous la barre de legende.
+                        .padding(.bottom, 90)
                 }
                 .scrollIndicators(.hidden)
             }
@@ -292,7 +294,9 @@ struct MemoryMapView: View {
                 .padding(24)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Pas de maxWidth ici : la largeur est fixee par l'appelant, et
+        // l'etaler reprenait la place du graphe en paysage.
+        .frame(maxHeight: .infinity)
         .background(K.paper)
     }
 

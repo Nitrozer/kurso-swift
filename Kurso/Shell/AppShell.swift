@@ -30,6 +30,28 @@ struct AppShell: View {
     @State private var router = IntentRouter.shared
 
     var body: some View {
+        // On mesure la marge haute pour poser le rail SOUS la barre d'etat.
+        // En paysage il la touchait, et iOS, voyant du graphite dessous,
+        // basculait l'heure et la date en blanc — illisibles sur le papier
+        // du reste de l'ecran.
+        GeometryReader { geo in
+            shell(topInset: geo.safeAreaInsets.top)
+        }
+        .ignoresSafeArea()
+    }
+
+    private func shell(topInset: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            // Une bande de papier sous la barre d'etat, sur toute la largeur.
+            // Le rail est en graphite : quelle que soit la couleur choisie par
+            // iOS pour l'heure, elle etait illisible sur l'un ou sur l'autre.
+            // Lui donner un fond clair unique regle les deux cas.
+            K.paper.frame(height: topInset)
+            body(topInset: topInset)
+        }
+    }
+
+    private func body(topInset: CGFloat) -> some View {
         HStack(spacing: 0) {
             if railShown {
                 RailView(tab: $tab)
@@ -87,7 +109,6 @@ struct AppShell: View {
         // barre d'etat.
         .padding(.top, 1)
         .background(K.paper)
-        .ignoresSafeArea(edges: .bottom)
     }
 
     private func consumeIntent() {
