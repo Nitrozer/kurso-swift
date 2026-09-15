@@ -40,8 +40,14 @@ public enum Gribou {
     /// Serie a partir de laquelle il est fier.
     public static let proudStreak = 3
     public static let sleepyHour = 23
-    /// « Trois apparitions par session au maximum. »
-    public static let maxAppearancesPerSession = 3
+    /// Le budget de parole d'une session (§12).
+    ///
+    /// Six, et non trois : le plafond d'origine avait ete fixe avant que
+    /// Gribou n'ait quoi que ce soit a dire. Une fois qu'il donne de vrais
+    /// conseils tires des donnees, trois ne couvraient meme pas un parcours
+    /// ordinaire — accueil, cahiers, revision. Ce qui protege le registre
+    /// outil n'est pas ce chiffre, c'est le silence pendant l'ecriture.
+    public static let maxAppearancesPerSession = 6
 
     public struct Context: Sendable {
         public var isPencilDown: Bool

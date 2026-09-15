@@ -35,10 +35,10 @@ struct GribouAdviceTests {
     @Test("Le plafond du §12 est tenu")
     func budgetHolds() {
         let candidates = [tip("pages", .action)]
-        #expect(GribouAdvice.choose(from: candidates, spent: 2)?.id == "pages")
-        // Trois apparitions consommees : il se tait, meme pour une action.
-        #expect(GribouAdvice.choose(from: candidates, spent: 3) == nil)
-        #expect(GribouAdvice.choose(from: candidates, spent: 9) == nil)
+        #expect(GribouAdvice.choose(from: candidates, spent: 5)?.id == "pages")
+        // Budget epuise : il se tait, meme pour une action.
+        #expect(GribouAdvice.choose(from: candidates, spent: 6) == nil)
+        #expect(GribouAdvice.choose(from: candidates, spent: 99) == nil)
     }
 
     @Test("Une mecanique ne s'explique qu'une fois")
@@ -61,8 +61,8 @@ struct GribouAdviceTests {
 
     @Test("Le budget restant se lit")
     func remaining() {
-        #expect(GribouAdvice.remaining(spent: 0) == 3)
-        #expect(GribouAdvice.remaining(spent: 3) == 0)
-        #expect(GribouAdvice.remaining(spent: 5) == 0)
+        #expect(GribouAdvice.remaining(spent: 0) == 6)
+        #expect(GribouAdvice.remaining(spent: 6) == 0)
+        #expect(GribouAdvice.remaining(spent: 9) == 0)
     }
 }

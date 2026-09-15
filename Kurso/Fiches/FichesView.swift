@@ -72,6 +72,8 @@ struct FichesView: View {
 
     private var grid: some View {
         ScrollView {
+            GribouBubble(tips: ficheTips, mood: .fier)
+                .padding(.bottom, 14)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 16)], spacing: 16) {
                 ForEach(shown, id: \.id) { fiche in
                     card(fiche)
@@ -168,6 +170,35 @@ struct FichesView: View {
         let title: String
         let subtitle: String
         let rarity: Fiche.Rarity
+    }
+
+    /// Ce que Gribou pourrait dire devant la collection.
+    private var ficheTips: [GribouAdvice.Tip] {
+        var tips: [GribouAdvice.Tip] = []
+        let locked = fiches.filter { $0.rarity == .locked }.count
+        let gold = fiches.filter { $0.rarity == .gold }.count
+
+        if locked > 0 {
+            tips.append(.init(
+                id: "fiches.verrouillees",
+                kind: .action,
+                text: locked == 1
+                    ? "Une fiche reste verrouillée. Capture une carte dans ce nœud et elle s'ouvre."
+                    : "\(locked) fiches restent verrouillées. Il suffit d'une carte capturée par nœud."))
+        }
+
+        tips.append(.init(
+            id: "fiches.or",
+            kind: .mechanic,
+            text: "Une fiche passe en or quand son nœud est su entièrement, sans une seule faute. C'est le seul moyen — elle ne s'achète pas."))
+
+        if gold > 0 {
+            tips.append(.init(
+                id: "fiches.bravo",
+                kind: .cheer,
+                text: gold == 1 ? "Une fiche en or. C'est un nœud su sans faute." : "\(gold) fiches en or dans ta collection."))
+        }
+        return tips
     }
 
     private var shown: [Entry] {

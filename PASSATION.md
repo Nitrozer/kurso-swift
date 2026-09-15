@@ -451,7 +451,7 @@ pas un oubli.
 - Pas de classement public permanent ; le duel de classe est ponctuel, la salle d'étude anonyme.
 - Aucun achat qui fait progresser plus vite.
 - Pas plus de deux notifications par jour, rien le week-end sans échéance.
-- Pas de mascotte qui bouge pendant l'écriture ; trois apparitions par session au maximum.
+- Pas de mascotte qui bouge pendant l'écriture ; six apparitions par session au maximum.
 - Pas de pari de copeaux (mécanique retirée du projet : enjeu artificiel).
 - Pas de télémétrie, pas de publicité, pas de revente de données.
 - **Aucune donnée de cours sur un serveur.** Pages, cartes, audio, PDF : tout

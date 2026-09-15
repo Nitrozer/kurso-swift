@@ -460,8 +460,6 @@ struct ReviewSessionView: View {
             Spacer(minLength: 0)
 
             VStack(spacing: 20) {
-                GribouView(mood: ranOut ? .inquiet : (session.isPerfect ? .fier : .concentre), size: 132)
-
                 VStack(spacing: 8) {
                     DisplayText(ranOut ? "Plus de gommes" : "Session terminée", size: 32)
                     Text(summaryMessage(session, ranOut: ranOut))
@@ -497,6 +495,9 @@ struct ReviewSessionView: View {
                         .strokeBorder(K.ink, lineWidth: 2.5))
                 }
 
+                GribouBubble(tips: summaryTips(session, ranOut: ranOut),
+                             mood: ranOut ? .inquiet : (session.isPerfect ? .fier : .concentre))
+
                 Button("Revenir") { reset() }
                     .buttonStyle(StickerButtonStyle(kind: .primary))
                     .frame(maxWidth: 320)
@@ -507,6 +508,35 @@ struct ReviewSessionView: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Ce que Gribou pourrait dire APRES une session : c'est le seul endroit
+    /// ou il peut commenter ce qui vient reellement de se passer.
+    private func summaryTips(_ session: ReviewSession, ranOut: Bool) -> [GribouAdvice.Tip] {
+        var tips: [GribouAdvice.Tip] = []
+
+        if ranOut {
+            tips.append(.init(
+                id: "resume.gommes",
+                kind: .debrief,
+                text: "Les gommes servent à ça : arrêter avant que ça devienne pénible. Les cartes non vues gardent leur date."))
+        } else if session.mistakes >= 3 {
+            tips.append(.init(
+                id: "resume.rates",
+                kind: .debrief,
+                text: "\(session.mistakes) ratées sur \(session.index). Elles reviennent demain en tête de pile — c'est là que ça se rattrape."))
+        } else if session.isPerfect, session.index > 0 {
+            tips.append(.init(
+                id: "resume.parfait",
+                kind: .cheer,
+                text: "Sans une faute. Si le nœud entier passe comme ça, sa fiche vire à l'or."))
+        }
+
+        tips.append(.init(
+            id: "resume.combo",
+            kind: .mechanic,
+            text: "Le combo multiplie l'XP à partir de deux bonnes réponses d'affilée. Une erreur le ramène à ×1, jamais ton travail."))
+        return tips
     }
 
     private func summaryTile(_ value: String, _ label: String, _ tint: Color) -> some View {

@@ -43,8 +43,8 @@ struct GribouMoodTests {
 
     @Test("Trois apparitions par session au maximum")
     func appearanceBudget() {
-        #expect(Gribou.canAppear(appearancesSoFar: 2))
-        #expect(Gribou.canAppear(appearancesSoFar: 3) == false)
+        #expect(Gribou.canAppear(appearancesSoFar: 5))
+        #expect(Gribou.canAppear(appearancesSoFar: 6) == false)
     }
 
     @Test("Chaque humeur nomme un clip existant")

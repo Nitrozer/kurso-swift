@@ -104,6 +104,7 @@ struct MemoryMapView: View {
             }
 
             if courses.count > 1 { courseChips }
+            GribouBubble(tips: mapTips, mood: .concentre)
         }
         .padding(.horizontal, 28)
         .padding(.top, 22)
@@ -420,6 +421,41 @@ struct MemoryMapView: View {
                       Freshness.CardState(dueAt: $0.dueAt, interval: $0.interval)
                   })
         })
+    }
+
+    /// Ce que Gribou pourrait dire devant la carte du semestre.
+    private var mapTips: [GribouAdvice.Tip] {
+        var tips: [GribouAdvice.Tip] = []
+        let erased = layout.nodes.filter { $0.state == .endangered }
+        let fading = layout.nodes.filter { $0.state == .toReview }
+
+        if !erased.isEmpty {
+            let titre = erased.first?.title ?? ""
+            tips.append(.init(
+                id: "carte.effacees",
+                kind: .action,
+                text: erased.count == 1
+                    ? "« \(titre) » est presque effacée. C'est celle qui coûtera le plus cher à l'examen."
+                    : "\(erased.count) nœuds sont presque effacés. Commence par « \(titre) » : c'est le plus ancien."))
+        } else if fading.count >= 2 {
+            tips.append(.init(
+                id: "carte.palissent",
+                kind: .debrief,
+                text: "\(fading.count) nœuds commencent à pâlir. Une session les remet au vert."))
+        }
+
+        tips.append(.init(
+            id: "carte.aretes",
+            kind: .mechanic,
+            text: "Les traits relient tes pages dans l'ordre où tu les as écrites. C'est ta progression réelle, pas un plan de cours."))
+
+        if !layout.nodes.isEmpty, erased.isEmpty, fading.isEmpty {
+            tips.append(.init(
+                id: "carte.verte",
+                kind: .cheer,
+                text: "Toute la carte est verte. Rien ne s'efface en ce moment."))
+        }
+        return tips
     }
 
     private var mapMeta: String {
