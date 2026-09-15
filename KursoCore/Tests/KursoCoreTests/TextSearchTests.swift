@@ -61,3 +61,49 @@ struct TextSearchTests {
         #expect(names("dijkstra").isEmpty)
     }
 }
+
+@Suite("Recherche — l'extrait")
+struct TextSearchExcerptTests {
+
+    @Test("L'extrait est la ligne qui contient le terme")
+    func findsLine() {
+        let text = "Tas binaires\nHauteur = log n\nInsertion par remontee"
+        let excerpt = TextSearch.excerpt(from: text, query: "hauteur")
+        #expect(excerpt?.line == "Hauteur = log n")
+        #expect(excerpt?.highlights.count == 1)
+    }
+
+    @Test("Les accents se surlignent quand meme")
+    func ignoresDiacritics() {
+        // On tape « theoreme » sans accent, on doit surligner « théorème ».
+        let excerpt = TextSearch.excerpt(from: "le théorème de Rolle", query: "theoreme")
+        #expect(excerpt?.highlights.count == 1)
+        let range = excerpt!.highlights[0]
+        let line = Array(excerpt!.line)
+        #expect(String(line[range.lowerBound..<range.upperBound]) == "théorème")
+    }
+
+    @Test("Plusieurs occurrences sur la meme ligne")
+    func several() {
+        let excerpt = TextSearch.excerpt(from: "tas puis tas", query: "tas")
+        #expect(excerpt?.highlights.count == 2)
+    }
+
+    @Test("Une ligne trop longue est coupee autour du terme")
+    func trimsLongLine() {
+        let padding = String(repeating: "a ", count: 200)
+        let excerpt = TextSearch.excerpt(from: padding + "heapify " + padding, query: "heapify")
+        #expect(excerpt != nil)
+        #expect(excerpt!.line.count <= 122)
+        // Le surlignage designe toujours le bon mot apres la coupe.
+        let line = Array(excerpt!.line)
+        let range = excerpt!.highlights[0]
+        #expect(String(line[range.lowerBound..<range.upperBound]) == "heapify")
+    }
+
+    @Test("Rien a montrer quand rien ne correspond")
+    func noMatch() {
+        #expect(TextSearch.excerpt(from: "rien ici", query: "zzz") == nil)
+        #expect(TextSearch.excerpt(from: "rien ici", query: "  ") == nil)
+    }
+}

@@ -37,6 +37,7 @@ struct LibraryView: View {
     @State private var customising: Course?
     @State private var openedPage: Page?
     @State private var query = ""
+    @State private var searchFilter: SearchKind = .all
     @State private var isImporting = false
     @State private var isPickingPDF = false
     @State private var pageToDelete: Page?
@@ -158,6 +159,11 @@ struct LibraryView: View {
                     } catch {
                         print("[BACKUP] ECHEC \(error)")
                     }
+                }
+                if let index = ProcessInfo.processInfo.arguments.firstIndex(of: "-simulateSearch"),
+                   index + 1 < ProcessInfo.processInfo.arguments.count {
+                    query = ProcessInfo.processInfo.arguments[index + 1]
+                    print("[RECHERCHE] « \(query) » → \(searchRows.count) rangee(s)")
                 }
                 if ProcessInfo.processInfo.arguments.contains("-openFirstPage") {
                     openedPage = pages.first
@@ -838,34 +844,217 @@ struct LibraryView: View {
             .sorted { $0.position == $1.position ? $0.createdAt < $1.createdAt : $0.position < $1.position }
     }
 
-    @ViewBuilder private var searchResults: some View {
-        // §4 : le dictionnaire sert a la recherche, jamais a reecrire la page.
-        let hits = TextSearch.rank(visiblePages, query: query) {
-            Abbreviations.searchableText($0.recognizedText)
+    /// D'ou vient le texte trouve. La maquette le dit sur chaque rangee :
+    /// chercher dans son ecriture n'a d'interet que si l'on voit OU ca a ete
+    /// trouve, et sous quelle forme.
+    enum SearchKind: String, CaseIterable, Identifiable {
+        case all, handwritten, typed, photo, cards
+        var id: String { rawValue }
+
+        var chip: String {
+            switch self {
+            case .all:         "Tout"
+            case .handwritten: "Manuscrit"
+            case .typed:       "Tapé"
+            case .photo:       "Photos du tableau"
+            case .cards:       "Cartes"
+            }
         }
-        if hits.isEmpty {
-            EmptyState(
-                title: "Rien trouvé",
-                message: "Aucune page ne contient « \(query) ». La recherche porte sur l'écriture reconnue."
-            )
-        } else {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 11) {
-                    MetaText("\(hits.count) resultats")
-                        .padding(.horizontal, 28)
-                    LazyVGrid(columns: columns, spacing: 16) {
-                        ForEach(hits, id: \.item.id) { hit in
-                            PageCard(page: hit.item,
-                                     action: { openedPage = hit.item },
-                                     onDelete: { pageToDelete = hit.item })
-                        }
+        var badge: String {
+            switch self {
+            case .typed: "TAPÉ"
+            case .photo: "PHOTO"
+            case .cards: "CARTE"
+            default:     "MANUSCRIT"
+            }
+        }
+        var tint: Color {
+            switch self {
+            case .typed: K.brand
+            case .photo: K.eraser
+            case .cards: K.success
+            default:     K.reward
+            }
+        }
+    }
+
+    struct SearchRow: Identifiable {
+        let id: UUID
+        let page: Page
+        let kind: SearchKind
+        let excerpt: TextSearch.Excerpt
+    }
+
+    /// Toutes les correspondances, quelle que soit leur forme.
+    private var searchRows: [SearchRow] {
+        var rows: [SearchRow] = []
+        for page in visiblePages {
+            // Le texte augmente des abreviations sert a TROUVER la page (§4) ;
+            // l'extrait montre, lui, ce que la page dit vraiment.
+            let searchable = Abbreviations.searchableText(page.recognizedText)
+            let matchesPage = !TextSearch.rank([page], query: query) { _ in searchable }.isEmpty
+
+            if !page.markdown.isEmpty,
+               let excerpt = TextSearch.excerpt(from: page.markdown, query: query) {
+                rows.append(SearchRow(id: page.id, page: page, kind: .typed, excerpt: excerpt))
+            } else if matchesPage,
+                      let excerpt = TextSearch.excerpt(from: page.recognizedText, query: query) {
+                let kind: SearchKind = (page.photo != nil || page.pdfAssetID != nil) ? .photo : .handwritten
+                rows.append(SearchRow(id: page.id, page: page, kind: kind, excerpt: excerpt))
+            }
+
+            for card in page.cards ?? [] {
+                let text = card.question + "\n" + (card.answerText ?? "")
+                if let excerpt = TextSearch.excerpt(from: text, query: query) {
+                    rows.append(SearchRow(id: card.id, page: page, kind: .cards, excerpt: excerpt))
+                }
+            }
+        }
+        return rows
+    }
+
+    private var filteredRows: [SearchRow] {
+        searchFilter == .all ? searchRows : searchRows.filter { $0.kind == searchFilter }
+    }
+
+    @ViewBuilder private var searchResults: some View {
+        let rows = filteredRows
+        VStack(alignment: .leading, spacing: 0) {
+            searchChips
+            if rows.isEmpty {
+                EmptyState(
+                    title: "Rien trouvé",
+                    message: "Aucune page ne contient « \(query) ». La recherche porte sur l'écriture reconnue."
+                )
+            } else {
+                ScrollView {
+                    VStack(spacing: 10) {
+                        ForEach(rows) { searchRow($0) }
+                        searchNote
                     }
                     .padding(.horizontal, 28)
+                    .padding(.vertical, 18)
                 }
-                .padding(.vertical, 20)
+                .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
         }
+    }
+
+    private var searchChips: some View {
+        HStack(spacing: 8) {
+            ForEach(SearchKind.allCases) { kind in
+                let count = kind == .all ? searchRows.count : searchRows.filter { $0.kind == kind }.count
+                let active = searchFilter == kind
+                Button { searchFilter = kind } label: {
+                    Text(kind.chip)
+                        .font(KFont.body(12, weight: .extraBold))
+                        .foregroundStyle(active ? K.paperAlt : K.ink)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(active ? K.brand : K.paperAlt, in: Capsule())
+                        .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
+                }
+                .buttonStyle(.plain)
+                .opacity(count == 0 && kind != .all ? 0.4 : 1)
+                .disabled(count == 0 && kind != .all)
+            }
+            Spacer(minLength: 0)
+            Text(searchCount)
+                .font(KFont.mono(10))
+                .tracking(1)
+                .foregroundStyle(K.inkSoft)
+        }
+        .padding(.horizontal, 28)
+        .padding(.top, 14)
+    }
+
+    private var searchCount: String {
+        let total = searchRows.count
+        let written = searchRows.filter { $0.kind == .handwritten }.count
+        var text = "\(total) RÉSULTAT\(total > 1 ? "S" : "")"
+        if written > 0 { text += " · \(written) MANUSCRIT\(written > 1 ? "S" : "")" }
+        return text
+    }
+
+    private func searchRow(_ row: SearchRow) -> some View {
+        Button { openedCourse = row.page.course; showsLoose = row.page.course == nil; openedPage = row.page } label: {
+            VStack(alignment: .leading, spacing: 9) {
+                HStack(spacing: 9) {
+                    Circle()
+                        .fill(K.cahier(CourseColor.named(row.page.course?.colorToken ?? "grey")))
+                        .frame(width: 13, height: 13)
+                        .overlay(Circle().strokeBorder(K.ink, lineWidth: 2))
+                    Text(row.page.course?.name ?? "Sans matière")
+                        .font(KFont.body(13, weight: .extraBold))
+                        .foregroundStyle(K.ink)
+                    Text(rowMeta(row))
+                        .font(KFont.mono(10))
+                        .foregroundStyle(K.inkSoft)
+                    Spacer(minLength: 8)
+                    Text(row.kind.badge)
+                        .font(KFont.body(9.5, weight: .extraBold))
+                        .tracking(0.8)
+                        .foregroundStyle(K.ink)
+                        .padding(.horizontal, 9).padding(.vertical, 4)
+                        .background(row.kind.tint.opacity(0.35), in: Capsule())
+                }
+                highlighted(row.excerpt)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(K.paperAlt, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(K.ink.opacity(0.12), lineWidth: 1.5))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func rowMeta(_ row: SearchRow) -> String {
+        let day = row.page.createdAt.formatted(.dateTime.day().month(.twoDigits))
+        return "\(row.page.title.isEmpty ? "sans titre" : row.page.title) · \(day)"
+    }
+
+    /// Le terme surligne, comme sur la maquette : c'est lui qu'on cherchait.
+    ///
+    /// `AttributedString` et non une concatenation de `Text` : seule la
+    /// premiere sait poser un fond sur une partie de la phrase.
+    private func highlighted(_ excerpt: TextSearch.Excerpt) -> Text {
+        let characters = Array(excerpt.line)
+        var result = AttributedString("")
+        var index = 0
+
+        for range in excerpt.highlights where range.lowerBound >= index {
+            if range.lowerBound > index {
+                result += AttributedString(String(characters[index..<range.lowerBound]))
+            }
+            var marked = AttributedString(String(characters[range.lowerBound..<range.upperBound]))
+            marked.backgroundColor = K.reward
+            marked.foregroundColor = K.ink
+            result += marked
+            index = range.upperBound
+        }
+        if index < characters.count {
+            result += AttributedString(String(characters[index...]))
+        }
+        return Text(result)
+            .font(KFont.body(14, weight: .bold))
+            .foregroundColor(K.inkBody)
+    }
+
+    private var searchNote: some View {
+        HStack(spacing: 13) {
+            GribouView(mood: .concentre, size: 46)
+            Text("Ton écriture est indexée sur l'appareil, au fil de la frappe du Pencil. Chercher un mot écrit à la main marche aussi bien que du texte tapé — et sans connexion.")
+                .font(KFont.body(12.5, weight: .bold))
+                .foregroundStyle(K.inkBody)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity)
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .strokeBorder(K.ink.opacity(0.15), lineWidth: 1.5))
+        .padding(.top, 8)
     }
 
     private var columns: [GridItem] {

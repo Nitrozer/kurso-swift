@@ -49,4 +49,71 @@ public enum TextSearch {
         }
         .sorted { $0.score > $1.score }
     }
+
+    /// L'extrait a montrer pour un resultat : la ligne qui contient le terme,
+    /// et ou le surligner.
+    ///
+    /// Montrer la vignette d'une page ne dit pas OU le mot a ete trouve. C'est
+    /// pourtant tout l'interet de chercher dans sa propre ecriture : voir la
+    /// phrase qu'on avait ecrite, avec le mot dedans.
+    public struct Excerpt: Equatable, Sendable {
+        public let line: String
+        /// Les morceaux a surligner, en indices de caracteres de `line`.
+        public let highlights: [Range<Int>]
+
+        public init(line: String, highlights: [Range<Int>]) {
+            self.line = line
+            self.highlights = highlights
+        }
+    }
+
+    /// La premiere ligne contenant le terme, decoupee pour l'affichage.
+    ///
+    /// La comparaison se fait sur le texte normalise — « theoreme » doit
+    /// surligner « théorème » — mais les indices rendus portent sur le texte
+    /// d'origine, qu'on affiche tel quel.
+    public static func excerpt(from text: String, query: String, limit: Int = 120) -> Excerpt? {
+        let needle = normalize(query).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return nil }
+
+        for raw in text.components(separatedBy: .newlines) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            guard !line.isEmpty else { continue }
+            let haystack = Array(normalize(line))
+            let target = Array(needle)
+            guard haystack.count >= target.count else { continue }
+
+            var found: [Range<Int>] = []
+            var index = 0
+            while index <= haystack.count - target.count {
+                if Array(haystack[index..<(index + target.count)]) == target {
+                    found.append(index..<(index + target.count))
+                    index += target.count
+                } else {
+                    index += 1
+                }
+            }
+            guard !found.isEmpty else { continue }
+
+            // Une ligne entiere de cours est trop longue pour une rangee : on
+            // la coupe, sans jamais couper au milieu d'un surlignage.
+            let characters = Array(line)
+            guard characters.count > limit, let first = found.first else {
+                return Excerpt(line: line, highlights: found)
+            }
+            let start = max(0, min(first.lowerBound - 30, characters.count - limit))
+            let end = min(characters.count, start + limit)
+            let shifted = found
+                .filter { $0.lowerBound >= start && $0.upperBound <= end }
+                .map { ($0.lowerBound - start)..<($0.upperBound - start) }
+            let prefix = start > 0 ? "…" : ""
+            let suffix = end < characters.count ? "…" : ""
+            let offset = prefix.count
+            return Excerpt(
+                line: prefix + String(characters[start..<end]) + suffix,
+                highlights: shifted.map { ($0.lowerBound + offset)..<($0.upperBound + offset) }
+            )
+        }
+        return nil
+    }
 }
