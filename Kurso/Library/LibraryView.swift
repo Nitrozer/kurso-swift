@@ -43,6 +43,12 @@ struct LibraryView: View {
     /// Le cahier qu'un intent Siri a demande, par identifiant.
     @State private var router = IntentRouter.shared
     #if os(iOS)
+    @State private var backupFile: ExportedFile?
+    @State private var isPickingBackup = false
+    @State private var pendingRestore: PendingRestore?
+    @State private var backupError: String?
+    #endif
+    #if os(iOS)
     @State private var exported: ExportedFile?
     @State private var pendingPDF: PickedPDF?
     @State private var exportProgress: Double?
@@ -123,6 +129,29 @@ struct LibraryView: View {
                     print("[IMPORT] total pages en base = \(pages.count)")
                 }
                 // Sert a photographier le canevas sans passer par le doigt.
+                // Aller-retour complet : sauvegarder, tout effacer, restaurer.
+                // Une sauvegarde qu'on ne relit pas ne prouve rien.
+                if ProcessInfo.processInfo.arguments.contains("-simulateBackup") {
+                    let made = BackupStore.archive(context)
+                    let data = (try? Backup.encode(made)) ?? Data()
+                    let octets = data.count
+                    let before = "\(made.courses.count)c \(made.pages.count)p \(made.cards.count)k "
+                        + "\(made.images.count)i \(made.assets.count)pdf \(made.slots.count)s"
+                    let drawings = made.pages.filter { ($0.drawing?.count ?? 0) > 0 }.count
+                    do {
+                        let reread = try Backup.decode(data)
+                        try BackupStore.restore(reread, context: context)
+                        let after = BackupStore.archive(context)
+                        let afterLine = "\(after.courses.count)c \(after.pages.count)p \(after.cards.count)k "
+                            + "\(after.images.count)i \(after.assets.count)pdf \(after.slots.count)s"
+                        let keptDrawings = after.pages.filter { ($0.drawing?.count ?? 0) > 0 }.count
+                        print("[BACKUP] \(octets) octets · avant \(before) traits=\(drawings)")
+                        print("[BACKUP] apres  \(afterLine) traits=\(keptDrawings)")
+                        print("[BACKUP] identique=\(before == afterLine && drawings == keptDrawings)")
+                    } catch {
+                        print("[BACKUP] ECHEC \(error)")
+                    }
+                }
                 if ProcessInfo.processInfo.arguments.contains("-openFirstPage") {
                     openedPage = pages.first
                 }
@@ -212,6 +241,27 @@ struct LibraryView: View {
         }
         }
         #if os(iOS)
+        .sheet(item: $backupFile) { ShareSheet(url: $0.url) }
+        .fileImporter(isPresented: $isPickingBackup, allowedContentTypes: [.json, .data]) { result in
+            readBackup(result)
+        }
+        .alert("Restaurer cette sauvegarde ?", isPresented: Binding(
+            get: { pendingRestore != nil },
+            set: { if !$0 { pendingRestore = nil } })) {
+            Button("Remplacer tout", role: .destructive) {
+                if let pending = pendingRestore { applyRestore(pending.archive) }
+            }
+            Button("Annuler", role: .cancel) { pendingRestore = nil }
+        } message: {
+            Text("Elle contient \(pendingRestore?.archive.summary ?? ""). Tout ce qui est actuellement dans Kurso sera remplacé.")
+        }
+        .alert("Sauvegarde", isPresented: Binding(
+            get: { backupError != nil },
+            set: { if !$0 { backupError = nil } })) {
+            Button("OK", role: .cancel) { backupError = nil }
+        } message: {
+            Text(backupError ?? "")
+        }
         .fullScreenCover(item: $sprintFor) { page in
             SprintPromptView(
                 page: page,
@@ -453,6 +503,9 @@ struct LibraryView: View {
             Spacer(minLength: 0)
             searchField
             if isInsideCahier { exportButton } else { importButton }
+            #if os(iOS)
+            if !isInsideCahier { backupMenu }
+            #endif
         }
         .padding(.horizontal, 28)
         .padding(.top, 22)
@@ -461,6 +514,62 @@ struct LibraryView: View {
             Rectangle().fill(K.ink.opacity(0.1)).frame(height: 1)
         }
     }
+
+    #if os(iOS)
+    /// Sauvegarder et restaurer. Tant que CloudKit dort, les cahiers n'existent
+    /// qu'ici : c'est la seule copie possible.
+    private var backupMenu: some View {
+        Menu {
+            Button("Sauvegarder mes cahiers") { makeBackup() }
+            Button("Restaurer une sauvegarde…") { isPickingBackup = true }
+        } label: {
+            Text("···")
+                .font(KFont.body(15, weight: .extraBold))
+                .foregroundStyle(K.ink)
+                .frame(width: 36, height: 34)
+                .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .strokeBorder(K.ink, lineWidth: 2.5))
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .accessibilityLabel("Sauvegarde")
+    }
+
+    struct PendingRestore: Identifiable {
+        let id = UUID()
+        let archive: Backup.Archive
+    }
+
+    private func makeBackup() {
+        do { backupFile = ExportedFile(url: try BackupStore.write(context)) }
+        catch { backupError = "La sauvegarde n'a pas pu être écrite." }
+    }
+
+    /// On annonce ce que contient le fichier AVANT de remplacer quoi que ce
+    /// soit : une restauration efface tout, ca ne se decide pas a l'aveugle.
+    private func readBackup(_ result: Result<URL, Error>) {
+        isPickingBackup = false
+        guard case .success(let url) = result else { return }
+        let opened = url.startAccessingSecurityScopedResource()
+        defer { if opened { url.stopAccessingSecurityScopedResource() } }
+        do {
+            pendingRestore = PendingRestore(archive: try Backup.decode(try Data(contentsOf: url)))
+        } catch Backup.Failure.tooRecent(let version) {
+            backupError = "Cette sauvegarde vient d'une version plus récente de Kurso (format \(version))."
+        } catch {
+            backupError = "Ce fichier n'est pas une sauvegarde Kurso lisible."
+        }
+    }
+
+    private func applyRestore(_ archive: Backup.Archive) {
+        pendingRestore = nil
+        openedPage = nil
+        openedCourse = nil
+        showsLoose = false
+        do { try BackupStore.restore(archive, context: context) }
+        catch { backupError = "La restauration a échoué. Rien n'a été remplacé." }
+    }
+    #endif
 
     private var headerTitle: String {
         guard isInsideCahier else { return "Mes cahiers" }
