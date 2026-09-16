@@ -127,10 +127,10 @@ struct DayView: View {
         .fullScreenCover(item: $paperFor) { paper in examPaper(paper) }
         #else
         .sheet(isPresented: $showsSocial) {
-            SocialView { showsSocial = false }
+            SocialView { showsSocial = false }.macSheet(1_000, 720)
         }
-        .sheet(item: $reportFor) { season in seasonReport(season) }
-        .sheet(item: $paperFor) { paper in examPaper(paper) }
+        .sheet(item: $reportFor) { season in seasonReport(season).macSheet(1_000, 700) }
+        .sheet(item: $paperFor) { paper in examPaper(paper).macSheet(900, 700) }
         #endif
         .sheet(isPresented: $isEnteringPaper) {
             ExamPaperEntry(
@@ -145,6 +145,7 @@ struct DayView: View {
                 },
                 onCancel: { isEnteringPaper = false }
             )
+            .macSheet(680, 620)
         }
     }
 

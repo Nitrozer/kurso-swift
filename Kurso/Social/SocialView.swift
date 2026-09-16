@@ -47,7 +47,13 @@ struct SocialView: View {
     @State private var newGroupName = ""
     @State private var busy = false
     @State private var message: String?
-    @State private var isSigningIn = false
+    @State private var isSigningIn = {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-openSignIn")
+        #else
+        return false
+        #endif
+    }()
     @State private var now = Date()
 
     private let tick = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
@@ -59,6 +65,12 @@ struct SocialView: View {
             .onReceive(tick) { now = $0 }
             .task {
                 player = PlayerStore.current(context)
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("-openSignIn") {
+                    try? await Task.sleep(for: .seconds(1))
+                    isSigningIn = true
+                }
+                #endif
                 await store.sync(context)
                 store.remember(standings, context: context)
             }
@@ -67,6 +79,11 @@ struct SocialView: View {
                     isSigningIn = false
                     Task { await store.sync(context, force: true) }
                 }
+                // Une feuille imbriquee ne peut pas depasser celle qui la porte : la
+                // ligue fait 1 000 de large, la connexion doit tenir dedans. Sous
+                // 1 000, elle bascule d'elle-meme sur sa mise en page etroite,
+                // qui est faite pour ca.
+                .macSheet(940, 680)
             }
             .alert("Ligue", isPresented: Binding(
                 get: { message != nil }, set: { if !$0 { message = nil } })) {

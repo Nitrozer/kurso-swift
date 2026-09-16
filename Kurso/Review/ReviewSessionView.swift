@@ -49,7 +49,7 @@ struct ReviewSessionView: View {
         }
         #else
         .sheet(item: $celebration) { won in
-            LevelUpView(celebration: won) { celebration = nil }
+            LevelUpView(celebration: won) { celebration = nil }.macSheet(760, 720)
         }
         #endif
         .task {

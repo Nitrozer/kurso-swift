@@ -340,13 +340,13 @@ struct LibraryView: View {
         // jamais — il fallait revenir a la planche des cahiers pour la voir
         // apparaitre. Troisieme fois que ce piege se referme ici.
         .sheet(item: $customising) { course in
-            CahierSettings(course: course) { customising = nil }
+            CahierSettings(course: course) { customising = nil }.macSheet(560, 560)
         }
         #if os(iOS)
         .overlay { ExportProgress(value: exportProgress) }
         #endif
         .sheet(isPresented: $isImporting) {
-            TimetableOnboardingView()
+            TimetableOnboardingView().macSheet(760, 640)
         }
         #if os(iOS)
         .sheet(item: $exported) { ShareSheet(url: $0.url) }

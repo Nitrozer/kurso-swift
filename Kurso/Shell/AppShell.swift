@@ -91,6 +91,7 @@ struct AppShell: View {
                 showsAccount = false
                 tab = .day
             })
+            .macSheet(720, 760)
         }
         #endif
         // Siri a pu demander un onglet avant que la fenetre soit la : on
