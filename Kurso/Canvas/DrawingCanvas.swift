@@ -12,6 +12,31 @@ import PencilKit
 /// vue connait.
 @Observable final class CanvasHandle {
     weak var canvas: PKCanvasView?
+    /// La palette d'outils. Le coordinateur la retient ; on n'en garde ici
+    /// qu'une reference faible, pour pouvoir la rallumer.
+    weak var toolPicker: PKToolPicker?
+
+    /// Rend l'ecriture au canevas.
+    ///
+    /// `becomeFirstResponder()` seul NE SUFFIT PAS : PencilKit attache la
+    /// visibilite de la palette a un repondant precis, et elle ne revient pas
+    /// d'elle-meme apres l'avoir perdu. C'est ce qui la faisait disparaitre
+    /// en sortant d'une feuille — et le double-tap du Pencil n'avait alors
+    /// plus rien a piloter.
+    @MainActor
+    func resumeWriting() {
+        guard let canvas else { return }
+        canvas.becomeFirstResponder()
+        toolPicker?.setVisible(true, forFirstResponder: canvas)
+    }
+
+    /// Range la palette : une feuille s'ouvre par-dessus.
+    @MainActor
+    func pauseWriting() {
+        guard let canvas else { return }
+        toolPicker?.setVisible(false, forFirstResponder: canvas)
+        canvas.resignFirstResponder()
+    }
 
     /// Le trace tel qu'il est A CET INSTANT.
     ///
@@ -95,8 +120,8 @@ struct DrawingCanvas: UIViewRepresentable {
             coordinator.report(canvas)
         }
 
-        context.coordinator.attachToolPicker(to: canvas)
         handle?.canvas = canvas
+        context.coordinator.attachToolPicker(to: canvas, handle: handle)
         // En dernier : brancher le delegue avant d'avoir pose le trace initial
         // faisait passer ce trace pour une modification de l'utilisateur.
         canvas.delegate = context.coordinator
@@ -132,13 +157,20 @@ struct DrawingCanvas: UIViewRepresentable {
     }
 
     func updateUIView(_ canvas: PaperBackedCanvas, context: Context) {
+        // Sans cette ligne, le coordinateur garde le parent du PREMIER rendu :
+        // ses fermetures pointent sur un etat fige.
+        context.coordinator.parent = self
         context.coordinator.report(canvas)
 
-        // Ne reinjecter que si le modele a change ailleurs : reaffecter le dessin
-        // pendant que l'utilisateur ecrit interromprait son trait.
-        if canvas.drawing != drawing && !context.coordinator.isWriting {
-            canvas.drawing = drawing
-        }
+        // ON NE REINJECTE PLUS RIEN.
+        //
+        // Tant que la page est ouverte, c'est le canevas qui fait foi : la
+        // valeur initiale est posee dans `makeUIView`, et plus rien d'autre ne
+        // remplace le trace de l'exterieur. Reaffecter `canvas.drawing` depuis
+        // l'etat SwiftUI ouvrait une course perdue d'avance — un @State se
+        // propage de facon asynchrone, donc `drawing` est souvent EN RETARD
+        // sur le canevas. On ressuscitait alors les traits qu'on venait
+        // d'effacer, puis on effacait les anciens au trait suivant.
     }
 
     /// Appele quand la vue disparait : c'est la qu'on range la palette.
@@ -162,19 +194,20 @@ struct DrawingCanvas: UIViewRepresentable {
     #endif
 
     final class Coordinator: NSObject, PKCanvasViewDelegate {
-        private let parent: DrawingCanvas
+        fileprivate var parent: DrawingCanvas
         private var toolPicker: PKToolPicker?
         private(set) var isWriting = false
         private var lastReported: PaperBackdrop.Viewport?
 
         init(_ parent: DrawingCanvas) { self.parent = parent }
 
-        func attachToolPicker(to canvas: PKCanvasView) {
+        func attachToolPicker(to canvas: PKCanvasView, handle: CanvasHandle?) {
             let picker = PKToolPicker()
             picker.setVisible(true, forFirstResponder: canvas)
             picker.addObserver(canvas)
             canvas.becomeFirstResponder()
             toolPicker = picker
+            handle?.toolPicker = picker
         }
 
         /// La palette n'appartient qu'a la feuille.

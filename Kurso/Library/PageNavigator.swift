@@ -40,23 +40,35 @@ struct PageNavigator: View {
         .background(K.paper)
     }
 
-    /// Le seul bouton de la barre : refermer le panneau.
+    /// Refermer le panneau.
+    ///
+    /// Toute la barre est le bouton, pas le seul chevron : un trait de neuf
+    /// points dans une bande claire ne se voit pas, et on cherchait ou
+    /// appuyer. Quarante-quatre points de haut, c'est la cible qu'un doigt
+    /// trouve du premier coup.
     private var collapseBar: some View {
-        HStack {
-            Button { onCollapse() } label: {
+        Button { onCollapse() } label: {
+            HStack(spacing: 8) {
                 ChevronGlyph()
-                    .stroke(K.ink, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
-                    .frame(width: 9, height: 9)
-                    .frame(width: 34, height: 34)
+                    .stroke(K.ink, style: StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round))
+                    .frame(width: 10, height: 10)
+                    .padding(.leading, 14)
+                Text("\(pages.count) page\(pages.count > 1 ? "s" : "")")
+                    .font(KFont.body(11.5, weight: .extraBold))
+                    .foregroundStyle(K.ink)
+                Spacer(minLength: 0)
+                Text("REPLIER")
+                    .font(KFont.body(9, weight: .extraBold))
+                    .tracking(0.8)
+                    .foregroundStyle(K.inkSoft)
+                    .padding(.trailing, 14)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Replier les pages")
-            Spacer(minLength: 0)
-            Text("\(pages.count) page\(pages.count > 1 ? "s" : "")")
-                .font(KFont.mono(9.5))
-                .foregroundStyle(K.inkSoft)
-                .padding(.trailing, 14)
+            .frame(height: 44)
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Replier les pages")
         .background(K.paperAlt)
         .overlay(alignment: .bottom) {
             Rectangle().fill(K.ink.opacity(0.12)).frame(height: 1)

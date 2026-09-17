@@ -210,19 +210,25 @@ struct LibraryView: View {
             HStack(spacing: 0) {
                 #if os(iOS)
                 if !navigatorShown {
+                    // Une poignee sur toute la hauteur, comme le bord d'un
+                    // tiroir : un carre de 26 sur 44 colle en haut de l'ecran
+                    // se rate une fois sur deux.
                     Button { navigatorShown = true } label: {
-                        ChevronGlyph()
-                            .stroke(K.ink, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
-                            .frame(width: 9, height: 9)
-                            .rotationEffect(.degrees(180))
-                            .frame(width: 26, height: 44)
-                            .background(K.paperAlt)
-                            .overlay(alignment: .trailing) {
-                                Rectangle().fill(K.ink.opacity(0.12)).frame(width: 1)
-                            }
+                        ZStack {
+                            K.paperAlt
+                            ChevronGlyph()
+                                .stroke(K.ink, style: StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round))
+                                .frame(width: 10, height: 10)
+                                .rotationEffect(.degrees(180))
+                        }
+                        .frame(width: 30)
+                        .frame(maxHeight: .infinity)
+                        .overlay(alignment: .trailing) {
+                            Rectangle().fill(K.ink.opacity(0.12)).frame(width: 1)
+                        }
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .frame(maxHeight: .infinity, alignment: .top)
                     .accessibilityLabel("Déplier les pages")
                 }
                 if navigatorShown {

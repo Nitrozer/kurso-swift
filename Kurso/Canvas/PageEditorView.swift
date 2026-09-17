@@ -22,6 +22,7 @@ struct PageEditorView: View {
     /// Seul l'editeur connait son canevas, d'ou ce signal venu du parent.
     var isCoveredBySheet: Bool = false
     @Environment(\.modelContext) private var context
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var drawing: PKDrawing
     @State private var clock = WritingClock()
@@ -281,19 +282,19 @@ struct PageEditorView: View {
         }
         #if os(iOS)
         .onChange(of: isCoveredBySheet) { _, covered in
-            if covered {
-                canvasHandle.canvas?.resignFirstResponder()
-            } else if !titleFocused, !isMasking {
-                canvasHandle.canvas?.becomeFirstResponder()
-            }
+            if covered { canvasHandle.pauseWriting() } else { resumeWriting() }
         }
         // Le champ du titre prend le premier repondant, et la palette
         // PencilKit disparait avec. On la rend des qu'on quitte le champ.
         .onChange(of: titleFocused) { _, focused in
-            if !focused { canvasHandle.canvas?.becomeFirstResponder() }
+            if !focused { resumeWriting() }
         }
         .onChange(of: isMasking) { _, masking in
-            if !masking { canvasHandle.canvas?.becomeFirstResponder() }
+            if !masking { resumeWriting() }
+        }
+        // Revenir de l'arriere-plan laissait la palette rangee.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { resumeWriting() }
         }
         #endif
         #if os(iOS)
@@ -767,6 +768,14 @@ struct PageEditorView: View {
     /// Ouvre les propositions. La palette PencilKit reste au-dessus de tout
     /// tant que le canevas garde le premier repondant : elle recouvrait les
     /// boutons de l'ecran des cartes.
+    /// Rend l'ecriture au canevas, si rien d'autre ne la reclame.
+    private func resumeWriting() {
+        #if os(iOS)
+        guard !isCoveredBySheet, !titleFocused, !isMasking else { return }
+        canvasHandle.resumeWriting()
+        #endif
+    }
+
     private func proposeCards() {
         persist()
         canvasHandle.canvas?.resignFirstResponder()
