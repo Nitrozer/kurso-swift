@@ -770,7 +770,13 @@ struct PageEditorView: View {
     private func proposeCards() {
         persist()
         canvasHandle.canvas?.resignFirstResponder()
-        onProposeCards(page)
+        // `persist()` LANCE la reconnaissance, il ne l'attend pas. Sans ce
+        // `await`, on proposait a partir du texte d'avant — donc rien du tout
+        // sur une page qu'on vient d'ecrire, et le bouton avait l'air casse.
+        Task {
+            await recognitionTask?.value
+            onProposeCards(page)
+        }
     }
 
 

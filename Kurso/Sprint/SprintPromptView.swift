@@ -22,23 +22,118 @@ struct SprintPromptView: View {
     @State private var questions: [Int: String] = [:]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), spacing: 16)], spacing: 16) {
-                    ForEach(proposals) { proposal in
-                        card(proposal)
+        content
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(K.paper)
+            .onAppear { kept = Set(proposals.map(\.id)) }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if proposals.isEmpty {
+            nothingToCut
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                ScrollView {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), spacing: 16)], spacing: 16) {
+                        ForEach(proposals) { proposal in
+                            card(proposal)
+                        }
                     }
+                    .padding(.horizontal, 28)
+                    .padding(.bottom, 16)
                 }
-                .padding(.horizontal, 28)
-                .padding(.bottom, 16)
+                .scrollIndicators(.hidden)
+                footer
             }
-            .scrollIndicators(.hidden)
-            footer
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(K.paper)
-        .onAppear { kept = Set(proposals.map(\.id)) }
+    }
+
+    // MARK: Quand il n'y a rien a decouper
+
+    /// Un ecran vide qui annonce « 0 carte » laisse croire que le bouton est
+    /// casse. Il dit ce que Kurso cherche, et montre la ligne qui marche.
+    private var nothingToCut: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(meta)
+                .font(KFont.mono(11))
+                .tracking(1.2)
+                .foregroundStyle(K.inkSoft)
+                .padding(.horizontal, 28)
+                .padding(.top, 26)
+
+            Spacer(minLength: 0)
+
+            VStack(alignment: .leading, spacing: 16) {
+                DisplayText(unreadable ? "Ton écriture n'a pas pu être relue."
+                                       : "Rien à découper dans cette page.", size: 30)
+
+                Text(unreadable
+                     ? "La relecture se fait sur l'appareil, et elle bute parfois. Écris une ligne de plus, puis redemande."
+                     : "Kurso ne rédige pas : il retourne en carte les lignes où tu poses un terme et sa définition. Il n'y en a aucune ici.")
+                    .font(KFont.body(14, weight: .bold))
+                    .foregroundStyle(K.inkBody)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 560, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("CE QU'IL CHERCHE")
+                        .font(KFont.body(10, weight: .extraBold))
+                        .tracking(1.1)
+                        .foregroundStyle(K.inkSoft)
+                    Text("Correcteur PID : annule l'erreur statique")
+                        .font(KFont.mono(14))
+                        .foregroundStyle(K.ink)
+                    HStack(spacing: 10) {
+                        Text("donne")
+                            .font(KFont.body(12, weight: .bold))
+                            .foregroundStyle(K.inkSoft)
+                        Text("Correcteur PID ?")
+                            .font(KFont.body(12.5, weight: .extraBold))
+                            .foregroundStyle(K.ink)
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(K.paper, in: Capsule())
+                            .overlay(Capsule().strokeBorder(K.ink.opacity(0.18), lineWidth: 2))
+                        Text("annule l'erreur statique")
+                            .font(KFont.body(12.5, weight: .bold))
+                            .foregroundStyle(K.inkBody)
+                    }
+                    Text("Deux-points, égale, flèche ou tiret : au choix. C'est toi qui décides de ce qui mérite une carte, en l'écrivant comme ça.")
+                        .font(KFont.body(12, weight: .bold))
+                        .foregroundStyle(K.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 520, alignment: .leading)
+                }
+                .padding(18)
+                .frame(maxWidth: 620, alignment: .leading)
+                .background(K.paperAlt, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(K.ink, lineWidth: 2.5))
+            }
+            .padding(.horizontal, 28)
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 16) {
+                GribouView(mood: .idle, size: 78)
+                Text("Rien n'a été créé, et rien n'a été perdu. Ta page est intacte.")
+                    .font(KFont.body(12.5, weight: .bold))
+                    .foregroundStyle(K.inkBody)
+                Spacer(minLength: 0)
+                Button("Fermer") { onSkip() }
+                    .buttonStyle(StickerButtonStyle(kind: .primary))
+                    .frame(width: 200)
+            }
+            .padding(.horizontal, 28)
+            .padding(.bottom, 22)
+        }
+    }
+
+    /// Aucune reconnaissance n'a abouti : ce n'est pas la meme chose que des
+    /// notes sans definition, et on ne dit donc pas la meme phrase.
+    private var unreadable: Bool {
+        (page.recognizedText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     // MARK: En-tete

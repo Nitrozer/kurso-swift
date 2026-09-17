@@ -30,7 +30,10 @@ enum DebugSeed {
         let page = Page(title: "Correcteur PID", createdAt: .now)
         page.course = course
         page.writingSeconds = 1_500
-        page.recognizedText = "DM d'automatique à rendre pour le 15 octobre\nle terme intégral annule l'erreur statique"
+        // Une ligne en prose et une vraie definition : la demo montre ainsi
+        // les deux moities du decoupage, celle qui donne une carte et celle
+        // qui n'en donne pas.
+        page.recognizedText = "DM d'automatique à rendre pour le 15 octobre\nTerme intégral: annule l'erreur statique"
         page.drawing = handwriting().dataRepresentation()
         context.insert(page)
 
