@@ -34,6 +34,8 @@ struct PageEditorView: View {
     /// Le volet des cartes capturees. On l'enleve pour ecrire large.
     @State private var marginShown = true
     @State private var isCapturing = false
+    /// Une image survole la page, prete a etre lachee.
+    @State private var isDropTargeted = false
     @State private var pendingCapture: PKDrawing?
     /// La diapo rasterisee, passee au fond du canevas pour qu'elle defile et
     /// zoome avec l'ecriture — la poser derriere le canevas la laissait
@@ -190,6 +192,30 @@ struct PageEditorView: View {
                     )
                 }
             }
+            // On depose une image n'importe ou sur la page : une capture
+            // d'ecran glissee depuis le Mac, une photo venue de Fichiers.
+            // Elle se pose la ou on la lache, pas en haut de page.
+            .onDrop(of: [.image], isTargeted: $isDropTargeted) { providers, location in
+                receiveDrop(providers, at: location)
+            }
+            .overlay {
+                if isDropTargeted {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(K.brand, style: StrokeStyle(lineWidth: 4, dash: [10, 7]))
+                        .overlay(alignment: .top) {
+                            Text("DÉPOSER ICI")
+                                .font(KFont.body(11, weight: .extraBold))
+                                .tracking(1)
+                                .foregroundStyle(K.paperAlt)
+                                .padding(.horizontal, 14).padding(.vertical, 7)
+                                .background(K.brand, in: Capsule())
+                                .padding(.top, 16)
+                        }
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                }
+            }
+            .animation(.snappy(duration: 0.18), value: isDropTargeted)
             // Le bouton vit AU BORD du volet, pas dans l'en-tete : on y va
             // avec le pouce, sans traverser l'ecran.
             Button { marginShown.toggle() } label: {
@@ -266,6 +292,22 @@ struct PageEditorView: View {
             #if DEBUG
             #if os(iOS)
             // Rejoue l'entree de menu, qu'aucun tap ne peut atteindre ici.
+            // Rejoue un depot d'image a un point donne de l'ecran, pour
+            // verifier que l'image tombe bien la ou on la lache.
+            if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-simulateDrop"),
+               i + 1 < ProcessInfo.processInfo.arguments.count {
+                let parts = ProcessInfo.processInfo.arguments[i + 1].split(separator: ",").compactMap { Double($0) }
+                if parts.count == 2 {
+                    try? await Task.sleep(for: .seconds(3))
+                    let point = CGPoint(x: parts[0], y: parts[1])
+                    let swatch = UIGraphicsImageRenderer(size: CGSize(width: 400, height: 260)).image { ctx in
+                        UIColor.systemTeal.setFill()
+                        ctx.fill(CGRect(x: 0, y: 0, width: 400, height: 260))
+                    }
+                    insert(swatch, droppedAt: point)
+                    print("[KURSO] depot a \(point) → fraction \(String(describing: pageFraction(of: point)))")
+                }
+            }
             if ProcessInfo.processInfo.arguments.contains("-simulateProposeCards") {
                 try? await Task.sleep(for: .seconds(4))
                 print("[KURSO] propositions=\(cardProposals.count)")
@@ -597,28 +639,47 @@ struct PageEditorView: View {
         }
     }
 
-    /// Une image ajoutee se pose en haut de page, a mi-largeur : de la on la
-    /// deplace et on la retaille comme on veut.
     private func adoptPlaced(_ item: PhotosPickerItem) async {
         defer { pickedPhoto = nil }
         guard let raw = try? await item.loadTransferable(type: Data.self),
               let source = UIImage(data: raw) else { return }
+        insert(source)
+    }
+
+    /// Pose une image sur la page.
+    ///
+    /// Sans point de depot, elle arrive en haut a mi-largeur — de la on la
+    /// deplace. Avec, elle se pose centree sous le doigt : c'est tout
+    /// l'interet du glisser-deposer, arriver a l'endroit voulu du premier coup.
+    @discardableResult
+    private func insert(_ source: UIImage, droppedAt viewPoint: CGPoint? = nil) -> Bool {
+        // On ne garde jamais l'original : une capture d'ecran de Mac fait
+        // plusieurs mega-octets, et la page en porte plusieurs.
         let maxSide: CGFloat = 1_600
         let scale = min(1, maxSide / max(source.size.width, source.size.height))
         let size = CGSize(width: source.size.width * scale, height: source.size.height * scale)
+        guard size.width > 0, size.height > 0 else { return false }
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         let reduced = UIGraphicsImageRenderer(size: size, format: format).image { context in
             context.cgContext.interpolationQuality = .high
             source.draw(in: CGRect(origin: .zero, size: size))
         }
+
         let made = PageImage(data: reduced.jpegData(compressionQuality: 0.8))
         let ratio = size.height / max(size.width, 1)
         made.width = 0.5
         // La page est haute : une image large occupe peu de hauteur relative.
         made.height = 0.5 * ratio * (PaperBackdrop.pageWidth / PaperBackdrop.pageHeight)
-        made.x = 0.25
-        made.y = 0.05
+        if let viewPoint, let center = pageFraction(of: viewPoint) {
+            // Ramenee dans la page si on l'a lachee pres d'un bord : une image
+            // a moitie dehors ne se rattrape qu'a la main.
+            made.x = min(max(center.x - made.width / 2, 0), max(0, 1 - made.width))
+            made.y = min(max(center.y - made.height / 2, 0), max(0, 1 - made.height))
+        } else {
+            made.x = 0.25
+            made.y = 0.05
+        }
         made.order = Double((page.images ?? []).count)
         made.page = page
         context.insert(made)
@@ -627,6 +688,31 @@ struct PageEditorView: View {
         // Selectionnee d'emblee : on veut la regler tout de suite, comme
         // partout ailleurs sur iPad.
         selectedImage = made.id
+        return true
+    }
+
+    /// Un point de l'ecran, en fractions de page.
+    ///
+    /// Passe par le canevas plutot que par la geometrie de la vue : lui seul
+    /// connait le zoom et le defilement, et une image lachee sur une page
+    /// zoomee doit tomber la ou on la voit.
+    private func pageFraction(of viewPoint: CGPoint) -> CGPoint? {
+        let inDrawing = canvasHandle.toDrawing(CGRect(origin: viewPoint, size: .zero))
+        guard DrawingCanvas.pageWidth > 0, DrawingCanvas.pageHeight > 0 else { return nil }
+        return CGPoint(x: inDrawing.minX / DrawingCanvas.pageWidth,
+                       y: inDrawing.minY / DrawingCanvas.pageHeight)
+    }
+
+    /// Recoit ce qu'on laisse tomber sur la page.
+    private func receiveDrop(_ providers: [NSItemProvider], at location: CGPoint) -> Bool {
+        guard let provider = providers.first(where: { $0.canLoadObject(ofClass: UIImage.self) }) else {
+            return false
+        }
+        _ = provider.loadObject(ofClass: UIImage.self) { object, _ in
+            guard let image = object as? UIImage else { return }
+            Task { @MainActor in insert(image, droppedAt: location) }
+        }
+        return true
     }
 
     /// Decode les images une fois : les relire a chaque image du zoom
