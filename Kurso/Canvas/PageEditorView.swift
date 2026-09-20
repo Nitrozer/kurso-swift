@@ -66,6 +66,8 @@ struct PageEditorView: View {
     /// a nil, et la photo choisie arrivait apres — donc toujours ignoree.
     @State private var photoPurpose: PhotoPurpose = .placed
     @State private var isPickingPhoto = false
+    /// L'appareil photo est ouvert.
+    @State private var isTakingPhoto = false
     @State private var recorder = LectureRecorder()
     /// Les traits horodates de l'enregistrement en cours.
     @State private var marks: [StrokeTimestamp] = []
@@ -344,6 +346,18 @@ struct PageEditorView: View {
         #if os(iOS)
         .photosPicker(isPresented: $isPickingPhoto,
                       selection: $pickedPhoto, matching: .images)
+        // Plein ecran : un appareil photo dans une petite feuille ne sert a
+        // rien, on ne voit pas ce qu'on cadre.
+        .fullScreenCover(isPresented: $isTakingPhoto) {
+            CameraPicker(
+                onCapture: { image in
+                    isTakingPhoto = false
+                    insert(image)
+                },
+                onCancel: { isTakingPhoto = false }
+            )
+            .ignoresSafeArea()
+        }
         #endif
         .alert("Enregistrement",
                isPresented: Binding(get: { audioNotice != nil },
@@ -790,6 +804,9 @@ struct PageEditorView: View {
                 }
             }
             Button("Ajouter une image") { photoPurpose = .placed; isPickingPhoto = true }
+            if CameraPicker.isAvailable {
+                Button("Prendre une photo") { isTakingPhoto = true }
+            }
             if hasBackdrop {
                 Button(isCapturingRegion ? "Annuler la capture" : "Capturer un morceau") {
                     isCapturingRegion.toggle()
