@@ -32,6 +32,8 @@ struct LibraryView: View {
     /// Le cahier ouvert. Nil : on regarde la planche des cahiers.
     /// Le panneau des pages se replie, comme celui des cartes.
     @State private var navigatorShown = true
+    /// Les pages qu'on s'apprete a supprimer en bloc.
+    @State private var pagesToDelete: [Page] = []
     /// Change pour demander a la feuille d'ouvrir le selecteur d'image.
     @State private var addImageRequest: UUID?
     @State private var openedCourse: Course?
@@ -247,6 +249,24 @@ struct LibraryView: View {
                     onTag: { page, tag in
                         page.tagToken = tag?.rawValue ?? ""
                         try? context.save()
+                    },
+                    onTagMany: { ids, tag in
+                        for item in orderedCurrent where ids.contains(item.id) {
+                            item.tagToken = tag?.rawValue ?? ""
+                        }
+                        try? context.save()
+                    },
+                    onMoveMany: { ids, destination in
+                        let ranks = PageOrdering.moved(
+                            ids, to: destination,
+                            among: orderedCurrent.map { (id: $0.id, position: $0.position) })
+                        for item in orderedCurrent {
+                            if let rank = ranks[item.id] { item.position = rank }
+                        }
+                        try? context.save()
+                    },
+                    onDeleteMany: { ids in
+                        pagesToDelete = orderedCurrent.filter { ids.contains($0.id) }
                     }
                 )
                 .transition(.move(edge: .leading))
@@ -318,6 +338,25 @@ struct LibraryView: View {
             )
         }
         #endif
+        .confirmationDialog(
+            pagesToDelete.count == 1 ? "Supprimer cette page ?"
+                                     : "Supprimer ces \(pagesToDelete.count) pages ?",
+            isPresented: Binding(get: { !pagesToDelete.isEmpty },
+                                 set: { if !$0 { pagesToDelete = [] } }),
+            titleVisibility: .visible
+        ) {
+            Button("Supprimer", role: .destructive) {
+                for page in pagesToDelete {
+                    if openedPage?.id == page.id { openedPage = nil }
+                    context.delete(page)
+                }
+                pagesToDelete = []
+                try? context.save()
+            }
+            Button("Annuler", role: .cancel) { pagesToDelete = [] }
+        } message: {
+            Text("Ce qui est écrit dessus part avec. C'est sans retour.")
+        }
         .confirmationDialog(
             "Supprimer cette page ?",
             isPresented: Binding(get: { pageToDelete != nil },

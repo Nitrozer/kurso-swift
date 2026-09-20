@@ -18,15 +18,22 @@ struct PageNavigator: View {
     var onCollapse: () -> Void = {}
     /// Poser ou retirer l'intercalaire d'une page.
     var onTag: (Page, PageTag?) -> Void = { _, _ in }
+    /// Le meme geste, sur plusieurs pages d'un coup.
+    var onTagMany: (Set<UUID>, PageTag?) -> Void = { _, _ in }
+    var onMoveMany: (Set<UUID>, PageOrdering.Destination) -> Void = { _, _ in }
+    var onDeleteMany: (Set<UUID>) -> Void = { _ in }
 
     /// L'intercalaire regarde. `nil` : tout le cahier.
     @State private var divider: PageTag?
+    /// Les pages cochees. Vide hors du mode selection.
+    @State private var selection: Set<UUID> = []
+    @State private var isSelecting = false
 
     enum Kind { case handwritten, pdf, image }
 
     var body: some View {
         VStack(spacing: 0) {
-            collapseBar
+            if isSelecting { selectionBar } else { collapseBar }
             dividers
             ScrollView {
                 LazyVStack(spacing: 12) {
@@ -41,14 +48,135 @@ struct PageNavigator: View {
                 .padding(.vertical, 14)
             }
             .scrollIndicators(.hidden)
+            if isSelecting { actions }
         }
         .frame(width: 168)
         .background(K.paper)
+        #if DEBUG
+        .task {
+            // Ouvre le mode selection pour pouvoir le regarder : aucun tap
+            // n'est simulable.
+            if ProcessInfo.processInfo.arguments.contains("-selectPages"), !pages.isEmpty {
+                isSelecting = true
+                selection = Set(pages.prefix(2).map(\.id))
+            }
+        }
+        #endif
         // Un intercalaire vide ne reste pas selectionne : on se retrouverait
         // devant un cahier vide sans comprendre pourquoi.
         .onChange(of: tokens) { _, now in
             divider = PageTag.stillThere(divider, in: now)
         }
+    }
+
+    /// L'en-tete pendant la selection.
+    private var selectionBar: some View {
+        HStack(spacing: 8) {
+            Button(selection.count == shown.count ? "Aucune" : "Tout") {
+                selection = selection.count == shown.count ? [] : Set(shown.map(\.page.id))
+            }
+            .buttonStyle(.plain)
+            .font(KFont.body(10.5, weight: .extraBold))
+            .foregroundStyle(K.brand)
+            Text("\(selection.count)")
+                .font(KFont.body(11.5, weight: .extraBold))
+                .foregroundStyle(K.ink)
+            Spacer(minLength: 0)
+            Button("Terminé") { isSelecting = false; selection = [] }
+                .buttonStyle(.plain)
+                .font(KFont.body(10.5, weight: .extraBold))
+                .foregroundStyle(K.ink)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 44)
+        .background(K.reward.opacity(0.35))
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(K.ink.opacity(0.12)).frame(height: 1)
+        }
+    }
+
+    /// Ce qu'on peut faire a plusieurs pages a la fois.
+    ///
+    /// En pile, pas en rangee : dans un panneau de cent soixante-huit points,
+    /// trois boutons cote a cote seraient trois cibles trop etroites.
+    private var actions: some View {
+        VStack(spacing: 7) {
+            Menu {
+                ForEach(PageTag.allCases, id: \.self) { tag in
+                    Button(tag.label) { applyMany { onTagMany($0, tag) } }
+                }
+                Divider()
+                Button("Retirer") { applyMany { onTagMany($0, nil) } }
+            } label: {
+                actionLabel("Intercalaire")
+            }
+            Menu {
+                Button("Mettre au début") { applyMany { onMoveMany($0, .start) } }
+                Button("Mettre à la fin") { applyMany { onMoveMany($0, .end) } }
+            } label: {
+                actionLabel("Déplacer")
+            }
+            Button {
+                applyMany { onDeleteMany($0) }
+            } label: {
+                actionLabel("Supprimer", destructive: true)
+            }
+            .buttonStyle(.plain)
+        }
+        .disabled(selection.isEmpty)
+        .opacity(selection.isEmpty ? 0.4 : 1)
+        .padding(.horizontal, 12)
+        .padding(.top, 12)
+        // La pastille qui replie le rail flotte en bas a gauche de l'ecran,
+        // pile sur cette pile : sans cette marge, « Supprimer » passait
+        // dessous.
+        .padding(.bottom, 56)
+        .background(K.paperAlt)
+        .overlay(alignment: .top) {
+            Rectangle().fill(K.ink.opacity(0.12)).frame(height: 1)
+        }
+    }
+
+    private func actionLabel(_ text: String, destructive: Bool = false) -> some View {
+        Text(text)
+            .font(KFont.body(11.5, weight: .extraBold))
+            .foregroundStyle(destructive ? K.alertBg : K.ink)
+            .frame(maxWidth: .infinity)
+            .frame(height: 36)
+            .background(destructive ? K.alertBg.opacity(0.08) : K.paper,
+                        in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .strokeBorder(destructive ? K.alertBg.opacity(0.35) : K.ink.opacity(0.16),
+                              lineWidth: 1.5))
+    }
+
+    /// Agit puis sort du mode : on ne reste pas devant une selection dont on
+    /// ne sait plus ce qu'elle porte.
+    private func applyMany(_ work: (Set<UUID>) -> Void) {
+        guard !selection.isEmpty else { return }
+        work(selection)
+        selection = []
+        isSelecting = false
+    }
+
+    private func tickBorder(isCurrent: Bool, isTicked: Bool) -> Color {
+        if isTicked { return K.success }
+        return isCurrent ? K.brand : K.ink.opacity(0.22)
+    }
+
+    private func tick(_ on: Bool) -> some View {
+        Circle()
+            .fill(on ? K.success : K.paperAlt)
+            .frame(width: 22, height: 22)
+            .overlay(Circle().strokeBorder(on ? K.success : K.ink.opacity(0.3), lineWidth: 2))
+            .overlay {
+                if on {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundStyle(K.paperAlt)
+                }
+            }
+            .padding(6)
     }
 
     private var tokens: [String] { pages.map(\.tagToken) }
@@ -175,15 +303,25 @@ struct PageNavigator: View {
 
     private func thumbnail(_ page: Page, number: Int) -> some View {
         let isCurrent = page.id == current?.id
-        return Button { onSelect(page) } label: {
+        let isTicked = selection.contains(page.id)
+        return Button {
+            if isSelecting {
+                if isTicked { selection.remove(page.id) } else { selection.insert(page.id) }
+            } else {
+                onSelect(page)
+            }
+        } label: {
             VStack(spacing: 5) {
                 PagePreview(page: page, renderWidth: 220)
                     .frame(width: 108, height: 148)
                     .background(K.paperAlt)
                     .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .strokeBorder(isCurrent ? K.brand : K.ink.opacity(0.22),
-                                      lineWidth: isCurrent ? 3 : 1.5))
+                        .strokeBorder(tickBorder(isCurrent: isCurrent, isTicked: isTicked),
+                                      lineWidth: isTicked || isCurrent ? 3 : 1.5))
+                    .overlay(alignment: .topTrailing) {
+                        if isSelecting { tick(isTicked) }
+                    }
                 HStack(spacing: 5) {
                     if let tag = PageTag.named(page.tagToken) {
                         Circle()
@@ -203,6 +341,21 @@ struct PageNavigator: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
+            if !isSelecting {
+                Button("Sélectionner des pages") {
+                    isSelecting = true
+                    selection = [page.id]
+                }
+                // Un PDF importe fait trente pages : les cocher une a une pour
+                // le remonter en tete serait un travail, pas un geste.
+                if let asset = page.pdfAssetID {
+                    Button("Sélectionner tout ce PDF") {
+                        isSelecting = true
+                        selection = Set(pages.filter { $0.pdfAssetID == asset }.map(\.id))
+                    }
+                }
+                Divider()
+            }
             Menu("Intercalaire") {
                 ForEach(PageTag.allCases, id: \.self) { tag in
                     Button(tag.label) { onTag(page, tag) }

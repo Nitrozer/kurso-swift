@@ -51,3 +51,60 @@ struct PageOrderingTests {
         #expect(!PageOrdering.needsRenumbering(fresh))
     }
 }
+
+@Suite("Deplacer un bloc de pages")
+struct PageMoveTests {
+
+    private let a = UUID(), b = UUID(), c = UUID(), d = UUID()
+
+    private var cahier: [(id: UUID, position: Double)] {
+        [(a, 0), (b, 1_000), (c, 2_000), (d, 3_000)]
+    }
+
+    private func ordre(_ changed: [UUID: Double]) -> [UUID] {
+        cahier.map { (id: $0.id, position: changed[$0.id] ?? $0.position) }
+            .sorted { $0.position < $1.position }
+            .map(\.id)
+    }
+
+    @Test("Un PDF ajoute a la suite passe tout entier devant")
+    func wholePdfToTheFront() {
+        // Le cas qui revient : on importe, puis on veut le voir en premier.
+        let changed = PageOrdering.moved([c, d], to: .start, among: cahier)
+        #expect(ordre(changed) == [c, d, a, b])
+    }
+
+    @Test("L'ordre relatif des pages deplacees est conserve")
+    func relativeOrderKept() {
+        let changed = PageOrdering.moved([a, c], to: .end, among: cahier)
+        #expect(ordre(changed) == [b, d, a, c])
+    }
+
+    @Test("Une selection eparpillee se retrouve groupee")
+    func scatteredBecomesContiguous() {
+        let changed = PageOrdering.moved([a, c], to: .start, among: cahier)
+        #expect(ordre(changed) == [a, c, b, d])
+    }
+
+    @Test("Les pages qui ne bougent pas gardent leur rang")
+    func othersUntouched() {
+        // Pas de renumerotation : bouger trois pages ne doit pas reecrire
+        // tout le cahier.
+        let changed = PageOrdering.moved([d], to: .start, among: cahier)
+        #expect(changed.keys.map { $0 } == [d])
+    }
+
+    @Test("Tout deplacer ne deplace rien")
+    func movingEverythingIsANoOp() {
+        // Il n'y a pas d'ailleurs.
+        #expect(PageOrdering.moved([a, b, c, d], to: .start, among: cahier).isEmpty)
+        #expect(PageOrdering.moved([], to: .end, among: cahier).isEmpty)
+    }
+
+    @Test("Les rangs restent assez espaces pour qu'on insere entre eux")
+    func stillRoomToInsert() {
+        let changed = PageOrdering.moved([d], to: .start, among: cahier)
+        let all = cahier.map { changed[$0.id] ?? $0.position }
+        #expect(!PageOrdering.needsRenumbering(all))
+    }
+}

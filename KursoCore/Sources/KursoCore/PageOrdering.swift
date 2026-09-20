@@ -46,4 +46,43 @@ public enum PageOrdering {
     public static func renumbered(count: Int) -> [Double] {
         (0..<count).map { Double($0) * step }
     }
+
+    public enum Destination { case start, end }
+
+    /// Les nouveaux rangs apres avoir deplace un bloc de pages.
+    ///
+    /// Sert au cas qui revient le plus : un PDF importe a la suite qu'on veut
+    /// voir AVANT le reste. On les emmene toutes d'un coup, dans leur ordre.
+    ///
+    /// Seules les pages deplacees changent de rang. Les rangs etant des
+    /// nombres a virgule, il suffit de descendre sous le plus petit ou de
+    /// monter au-dessus du plus grand : pas de renumerotation, donc pas de
+    /// reecriture de tout le cahier pour bouger trois pages.
+    ///
+    /// L'ordre RELATIF des pages deplacees est conserve, et une selection
+    /// eparpillee se retrouve groupee a l'arrivee — c'est ce qu'on veut en
+    /// demandant « mets-les au debut ».
+    public static func moved(_ moving: Set<UUID>, to destination: Destination,
+                             among pages: [(id: UUID, position: Double)]) -> [UUID: Double] {
+        let ordered = pages.sorted { $0.position < $1.position }
+        let going = ordered.filter { moving.contains($0.id) }
+        let staying = ordered.filter { !moving.contains($0.id) }
+        // Tout deplacer ne deplace rien : il n'y a pas d'ailleurs.
+        guard !going.isEmpty, !staying.isEmpty else { return [:] }
+
+        var changed: [UUID: Double] = [:]
+        switch destination {
+        case .start:
+            let first = staying.map(\.position).min() ?? 0
+            for (rank, page) in going.enumerated() {
+                changed[page.id] = first - step * Double(going.count - rank)
+            }
+        case .end:
+            let last = staying.map(\.position).max() ?? 0
+            for (rank, page) in going.enumerated() {
+                changed[page.id] = last + step * Double(rank + 1)
+            }
+        }
+        return changed
+    }
 }
