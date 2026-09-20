@@ -123,14 +123,14 @@ struct DrawingCanvas: UIViewRepresentable {
         handle?.canvas = canvas
         context.coordinator.attachToolPicker(to: canvas, handle: handle)
 
-        // Deux doigts, deux tapes : on bascule sur la gomme, et on revient a
-        // l'outil d'avant. C'est le geste de GoodNotes, celui qu'on a dans les
-        // doigts — sans traverser l'ecran jusqu'a la palette.
+        // Deux doigts, deux tapes : on annule le dernier trait. C'est le
+        // geste de GoodNotes, celui qu'on a dans les doigts — on rate un
+        // caractere, on tape deux fois, il n'est plus la.
         //
         // `cancelsTouchesInView` a faux : le defilement et le zoom du canevas
         // ne doivent rien perdre a cause de nous.
         let toggle = UITapGestureRecognizer(target: context.coordinator,
-                                            action: #selector(Coordinator.toggleEraser))
+                                            action: #selector(Coordinator.undoLastStroke))
         toggle.numberOfTouchesRequired = 2
         toggle.numberOfTapsRequired = 2
         toggle.cancelsTouchesInView = false
@@ -153,12 +153,15 @@ struct DrawingCanvas: UIViewRepresentable {
             }
         }
 
-        // Rejoue la bascule a deux doigts, qu'aucun geste simule ne peut
-        // declencher : on verifie que la palette suit.
-        if ProcessInfo.processInfo.arguments.contains("-simulateEraserToggle") {
+        // Rejoue l'annulation a deux doigts, qu'aucun geste simule ne peut
+        // declencher.
+        if ProcessInfo.processInfo.arguments.contains("-simulateUndo") {
             let coordinator = context.coordinator
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
-                coordinator.toggleEraser()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                let undo = canvas.undoManager
+                try? "gestionnaire=\(undo != nil) annulable=\(undo?.canUndo ?? false) traits=\(canvas.drawing.strokes.count)\n"
+                    .write(toFile: NSTemporaryDirectory() + "kurso-undo.txt", atomically: true, encoding: .utf8)
+                coordinator.undoLastStroke()
             }
         }
 
@@ -217,14 +220,10 @@ struct DrawingCanvas: UIViewRepresentable {
     }
     #endif
 
-    final class Coordinator: NSObject, PKCanvasViewDelegate, PKToolPickerObserver {
+    final class Coordinator: NSObject, PKCanvasViewDelegate {
         fileprivate var parent: DrawingCanvas
         private var toolPicker: PKToolPicker?
         private weak var canvas: PKCanvasView?
-        /// Le dernier outil qui n'etait pas une gomme. C'est lui qu'on rend
-        /// quand on rebascule : revenir sur un stylo noir alors qu'on ecrivait
-        /// au surligneur jaune serait une perte, pas un raccourci.
-        private var lastInkTool: PKTool?
         private(set) var isWriting = false
         private var lastReported: PaperBackdrop.Viewport?
 
@@ -235,36 +234,24 @@ struct DrawingCanvas: UIViewRepresentable {
             picker.setVisible(true, forFirstResponder: canvas)
             picker.addObserver(canvas)
             canvas.becomeFirstResponder()
-            picker.addObserver(self)
             toolPicker = picker
             self.canvas = canvas
-            lastInkTool = picker.selectedTool
             handle?.toolPicker = picker
         }
 
-        /// La palette a change d'outil. On ne retient que ce qui ecrit.
-        func toolPickerSelectedToolDidChange(_ toolPicker: PKToolPicker) {
-            guard !(toolPicker.selectedTool is PKEraserTool) else { return }
-            lastInkTool = toolPicker.selectedTool
-        }
-
-        /// Bascule gomme / outil d'ecriture.
+        /// Annule le dernier trait.
         ///
-        /// On passe par `selectedTool` de la palette, pas par `canvas.tool` :
-        /// sinon le canevas efface pendant que la palette montre encore un
-        /// stylo, et on ne sait plus ou l'on en est.
-        @objc func toggleEraser() {
-            guard let toolPicker, let canvas else { return }
-            if toolPicker.selectedTool is PKEraserTool {
-                toolPicker.selectedTool = lastInkTool ?? PKInkingTool(.pen, color: .black, width: 4)
-            } else {
-                lastInkTool = toolPicker.selectedTool
-                toolPicker.selectedTool = PKEraserTool(.bitmap)
-            }
-            // Le geste n'a aucun retour visuel immediat si la palette est
-            // rangee : la vibration dit qu'il a ete pris.
+        /// PencilKit inscrit lui-meme ses traits dans le gestionnaire
+        /// d'annulation du canevas : on ne retire rien a la main, on lui
+        /// demande de revenir en arriere. L'enregistrement suit tout seul —
+        /// une annulation n'emet pas de fin d'outil, mais bien un changement
+        /// de trace, et c'est ce signal-la qui declenche la sauvegarde.
+        @objc func undoLastStroke() {
+            guard let canvas, let undo = canvas.undoManager, undo.canUndo else { return }
+            undo.undo()
+            // Le geste n'a aucun retour visible quand on annule un trait pose
+            // hors de l'ecran : la vibration dit qu'il a ete pris.
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            canvas.becomeFirstResponder()
         }
 
         /// La palette n'appartient qu'a la feuille.
@@ -275,7 +262,6 @@ struct DrawingCanvas: UIViewRepresentable {
         func detachToolPicker(from canvas: PKCanvasView) {
             toolPicker?.setVisible(false, forFirstResponder: canvas)
             toolPicker?.removeObserver(canvas)
-            toolPicker?.removeObserver(self)
             canvas.resignFirstResponder()
             toolPicker = nil
         }
