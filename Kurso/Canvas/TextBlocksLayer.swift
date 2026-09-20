@@ -133,10 +133,10 @@ final class TextBlockView: UIView, UITextViewDelegate {
     var onEdited: ((NSAttributedString, CGFloat) -> Void)?
     var onEmptied: (() -> Void)?
     var onDoneEditing: (() -> Void)?
+    let pan = UIPanGestureRecognizer()
     private(set) var isBeingMoved = false
     private var loadedID: UUID?
-    /// L'appui long ne donne pas de translation : on suit la position nous-meme.
-    private var lastTouch: CGPoint?
+
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -172,12 +172,15 @@ final class TextBlockView: UIView, UITextViewDelegate {
         let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
         addGestureRecognizer(tap)
 
-        // Appui long pour deplacer : une tape place le curseur, comme partout
-        // ailleurs. Un bloc qu'on ne peut pas taper sans le deplacer serait
-        // inecrivable.
-        let hold = UILongPressGestureRecognizer(target: self, action: #selector(handleHold))
-        hold.minimumPressDuration = 0.35
-        addGestureRecognizer(hold)
+        // Un simple glissement deplace le bloc, comme une image posee. Pas
+        // d'appui long : un geste qu'il faut deviner n'existe pas, et rien a
+        // l'ecran ne pouvait l'enseigner.
+        //
+        // Aucun conflit avec la tape : l'une demande du mouvement, l'autre
+        // exige l'immobilite. Et pendant la saisie le glissement est coupe,
+        // pour laisser selectionner du texte.
+        pan.addTarget(self, action: #selector(handlePan))
+        addGestureRecognizer(pan)
     }
 
     required init?(coder: NSCoder) { fatalError("jamais depuis un storyboard") }
@@ -187,6 +190,8 @@ final class TextBlockView: UIView, UITextViewDelegate {
         textView.isEditable = true
         textView.isSelectable = true
         textView.becomeFirstResponder()
+        // Pendant la saisie, le glissement laisse la main a la selection.
+        pan.isEnabled = false
         if let point,
            let position = textView.closestPosition(to: point),
            let range = textView.textRange(from: position, to: position) {
@@ -251,30 +256,25 @@ final class TextBlockView: UIView, UITextViewDelegate {
         return height
     }
 
-    @objc private func handleHold(_ gesture: UILongPressGestureRecognizer) {
+    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         guard let host = superview else { return }
         switch gesture.state {
         case .began:
             isBeingMoved = true
-            lastTouch = gesture.location(in: host)
-            textView.resignFirstResponder()
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             UIView.animate(withDuration: 0.12) {
-                self.alpha = 0.85
+                self.alpha = 0.9
                 self.layer.shadowOpacity = 0.18
                 self.layer.shadowRadius = 8
                 self.layer.shadowOffset = CGSize(width: 0, height: 4)
             }
         case .changed:
-            let now = gesture.location(in: host)
-            guard let previous = lastTouch else { lastTouch = now; return }
-            lastTouch = now
-            let translation = CGPoint(x: now.x - previous.x, y: now.y - previous.y)
+            let translation = gesture.translation(in: host)
+            gesture.setTranslation(.zero, in: host)
             center = CGPoint(x: center.x + translation.x, y: center.y + translation.y)
             onMoved?(translation)
         case .ended, .cancelled, .failed:
             isBeingMoved = false
-            lastTouch = nil
             UIView.animate(withDuration: 0.12) {
                 self.alpha = 1
                 self.layer.shadowOpacity = 0
@@ -295,11 +295,16 @@ final class TextBlockView: UIView, UITextViewDelegate {
         // On se rendort : sinon le bloc reste insaisissable pour toujours.
         textView.isEditable = false
         textView.isSelectable = false
+        pan.isEnabled = true
         setEditingLook(false)
         let trimmed = textView.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
+        // PAS pendant un deplacement. L'appui long rend le clavier, ce qui
+        // termine la saisie : un bloc encore vide s'effacait donc a l'instant
+        // meme ou on essayait de l'attraper. On le garde — il porte un cadre,
+        // on le retrouve, et on le remplit apres l'avoir pose.
+        if trimmed.isEmpty, !isBeingMoved {
             onEmptied?()
-        } else {
+        } else if !trimmed.isEmpty {
             onEdited?(textView.attributedText, fit())
             onDoneEditing?()
         }
