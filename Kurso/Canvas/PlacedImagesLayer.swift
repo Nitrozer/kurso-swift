@@ -32,6 +32,17 @@ struct PlacedImagesLayer: UIViewRepresentable {
         context.coordinator.rebuild(in: view)
     }
 
+
+    /// Prend toute la place qu'on lui propose.
+    ///
+    /// Sans cela, la mise en page donnait a cette couche une taille arbitraire
+    /// — 281 points de large pour une page de 1 240 — et UIKit refusait tout
+    /// toucher au-dela : les objets se voyaient mais restaient inatteignables.
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: PassthroughView,
+                      context: Context) -> CGSize? {
+        proposal.replacingUnspecifiedDimensions()
+    }
+
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     // MARK: Coordination
@@ -105,11 +116,24 @@ struct PlacedImagesLayer: UIViewRepresentable {
 }
 
 /// Une vue qui ne retient que ce qui touche ses enfants.
+///
+/// Elle interroge ses enfants elle-meme, sans passer par `super`. Et c'est
+/// tout l'interet : UIKit ne teste JAMAIS le toucher hors des limites d'une
+/// vue, alors que le dessin, lui, deborde sans rien dire. Cette couche recoit
+/// de la mise en page une taille bien plus petite que la page, et ses enfants
+/// tombaient donc en dehors : on les voyait, aucun doigt ne les atteignait.
+/// Les images posees comme les blocs de texte etaient immobiles pour cette
+/// seule raison.
 final class PassthroughView: UIView {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        let hit = super.hitTest(point, with: event)
+        guard isUserInteractionEnabled, !isHidden, alpha > 0.01 else { return nil }
+        // Du dernier pose au premier : celui du dessus repond en premier.
+        for child in subviews.reversed() {
+            guard !child.isHidden, child.isUserInteractionEnabled, child.alpha > 0.01 else { continue }
+            if let hit = child.hitTest(convert(point, to: child), with: event) { return hit }
+        }
         // Rien a nous sous ce point : le canevas le recoit.
-        return hit === self ? nil : hit
+        return nil
     }
 }
 

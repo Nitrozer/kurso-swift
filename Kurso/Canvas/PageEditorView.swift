@@ -663,6 +663,9 @@ struct PageEditorView: View {
                     resumeWriting()
                 }
             )
+            // La couche couvre toute la zone du canevas : un objet pose au
+            // bord doit pouvoir etre touche, pas seulement vu.
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -702,6 +705,7 @@ struct PageEditorView: View {
                     reloadPlaced()
                 }
             )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 

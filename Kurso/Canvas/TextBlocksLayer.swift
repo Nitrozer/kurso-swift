@@ -33,6 +33,17 @@ struct TextBlocksLayer: UIViewRepresentable {
         context.coordinator.rebuild(in: view)
     }
 
+
+    /// Prend toute la place qu'on lui propose.
+    ///
+    /// Sans cela, la mise en page donnait a cette couche une taille arbitraire
+    /// — 281 points de large pour une page de 1 240 — et UIKit refusait tout
+    /// toucher au-dela : les objets se voyaient mais restaient inatteignables.
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: PassthroughView,
+                      context: Context) -> CGSize? {
+        proposal.replacingUnspecifiedDimensions()
+    }
+
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     @MainActor final class Coordinator: NSObject {
@@ -55,6 +66,9 @@ struct TextBlocksLayer: UIViewRepresentable {
                 let block = blocks[item.id] ?? make(item, in: view)
                 block.item = item
                 block.load(item)
+                // Filet de securite : un glissement coupe par accident ne doit
+                // pas condamner le bloc a ne plus jamais bouger.
+                block.pan.isEnabled = true
                 place(block, for: item)
             }
 
@@ -177,8 +191,12 @@ final class TextBlockView: UIView, UITextViewDelegate {
         // l'ecran ne pouvait l'enseigner.
         //
         // Aucun conflit avec la tape : l'une demande du mouvement, l'autre
-        // exige l'immobilite. Et pendant la saisie le glissement est coupe,
-        // pour laisser selectionner du texte.
+        // exige l'immobilite.
+        //
+        // Et il reste actif MEME PENDANT LA SAISIE. Le couper le temps d'ecrire
+        // paraissait poli ; en pratique il ne se rallumait qu'a la fin de la
+        // saisie, et une zone de texte ne rend pas toujours le clavier quand on
+        // touche ailleurs. Le bloc devenait alors immobile pour de bon.
         pan.addTarget(self, action: #selector(handlePan))
         addGestureRecognizer(pan)
     }
@@ -190,8 +208,6 @@ final class TextBlockView: UIView, UITextViewDelegate {
         textView.isEditable = true
         textView.isSelectable = true
         textView.becomeFirstResponder()
-        // Pendant la saisie, le glissement laisse la main a la selection.
-        pan.isEnabled = false
         if let point,
            let position = textView.closestPosition(to: point),
            let range = textView.textRange(from: position, to: position) {
@@ -295,7 +311,6 @@ final class TextBlockView: UIView, UITextViewDelegate {
         // On se rendort : sinon le bloc reste insaisissable pour toujours.
         textView.isEditable = false
         textView.isSelectable = false
-        pan.isEnabled = true
         setEditingLook(false)
         let trimmed = textView.text.trimmingCharacters(in: .whitespacesAndNewlines)
         // PAS pendant un deplacement. L'appui long rend le clavier, ce qui
