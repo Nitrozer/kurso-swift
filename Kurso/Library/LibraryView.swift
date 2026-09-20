@@ -267,6 +267,15 @@ struct LibraryView: View {
                     },
                     onDeleteMany: { ids in
                         pagesToDelete = orderedCurrent.filter { ids.contains($0.id) }
+                    },
+                    onReorder: { moved, target, above in
+                        let ranks = PageOrdering.dropped(
+                            moved, onto: target, above: above,
+                            among: orderedCurrent.map { (id: $0.id, position: $0.position) })
+                        for item in orderedCurrent {
+                            if let rank = ranks[item.id] { item.position = rank }
+                        }
+                        try? context.save()
                     }
                 )
                 .transition(.move(edge: .leading))

@@ -22,12 +22,21 @@ struct PageNavigator: View {
     var onTagMany: (Set<UUID>, PageTag?) -> Void = { _, _ in }
     var onMoveMany: (Set<UUID>, PageOrdering.Destination) -> Void = { _, _ in }
     var onDeleteMany: (Set<UUID>) -> Void = { _ in }
+    /// Une page lachee sur une autre : `above` dit de quel cote.
+    var onReorder: (UUID, UUID, Bool) -> Void = { _, _, _ in }
 
     /// L'intercalaire regarde. `nil` : tout le cahier.
     @State private var divider: PageTag?
     /// Les pages cochees. Vide hors du mode selection.
     @State private var selection: Set<UUID> = []
     @State private var isSelecting = false
+    /// Ou la page glissee tomberait si on la lachait maintenant.
+    @State private var landing: Landing?
+
+    struct Landing: Equatable {
+        let id: UUID
+        let above: Bool
+    }
 
     enum Kind { case handwritten, pdf, image }
 
@@ -340,6 +349,33 @@ struct PageNavigator: View {
             }
         }
         .buttonStyle(.plain)
+        // Glisser pour ranger : le geste qu'on fait d'instinct dans une pile
+        // de feuilles. Coupe pendant la selection, ou la tape coche.
+        .draggable(isSelecting ? "" : page.id.uuidString)
+        .overlay(alignment: landing?.id == page.id && landing?.above == true ? .top : .bottom) {
+            if landing?.id == page.id {
+                // En graphite, jamais en bleu : le bleu dit deja « page
+                // ouverte », et le repere se confondait avec son cadre.
+                Capsule()
+                    .fill(K.ink)
+                    .frame(height: 5)
+                    .padding(.horizontal, -4)
+                    .shadow(color: K.paper, radius: 2)
+            }
+        }
+        .onDrop(of: [.text], delegate: PageDrop(
+            target: page,
+            isActive: !isSelecting,
+            onHover: { above in
+                landing = above.map { Landing(id: page.id, above: $0) }
+            },
+            onLand: { raw, above in
+                landing = nil
+                guard let moved = UUID(uuidString: raw), moved != page.id else { return false }
+                onReorder(moved, page.id, above)
+                return true
+            }
+        ))
         .contextMenu {
             if !isSelecting {
                 Button("Sélectionner des pages") {
@@ -389,5 +425,53 @@ struct PageNavigator: View {
         let next = pages.first { $0.position > page.position }?.position
         return PageOrdering.position(after: page.position, before: next)
     }
+}
+
+/// La cible d'une page qu'on fait glisser.
+///
+/// Un `DropDelegate` plutot que `dropDestination` : lui seul donne la position
+/// du doigt PENDANT le survol, et c'est elle qui dit si la page tombera
+/// au-dessus ou en dessous. Sans cela, on ne saurait montrer aucun repere, et
+/// on lacherait a l'aveugle.
+private struct PageDrop: DropDelegate {
+    let target: Page
+    let isActive: Bool
+    var onHover: (Bool?) -> Void
+    var onLand: (String, Bool) -> Bool
+
+    func validateDrop(info: DropInfo) -> Bool { isActive }
+
+    func dropEntered(info: DropInfo) { onHover(side(info)) }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        onHover(side(info))
+        return DropProposal(operation: .move)
+    }
+
+    func dropExited(info: DropInfo) { onHover(nil) }
+
+    func performDrop(info: DropInfo) -> Bool {
+        let above = side(info) ?? true
+        guard let provider = info.itemProviders(for: [.text]).first else {
+            onHover(nil)
+            return false
+        }
+        // `loadObject` repond plus tard : on accepte maintenant, on range
+        // quand le texte arrive.
+        _ = provider.loadObject(ofClass: NSString.self) { raw, _ in
+            guard let raw = raw as? String else { return }
+            Task { @MainActor in _ = onLand(raw, above) }
+        }
+        return true
+    }
+
+    /// La moitie haute d'une vignette fait passer devant, la moitie basse
+    /// derriere. C'est ce que fait le doigt sans qu'on le lui explique.
+    private func side(_ info: DropInfo) -> Bool? {
+        info.location.y < PageDrop.thumbnailHeight / 2
+    }
+
+    /// La hauteur d'une vignette, celle posee dans `thumbnail`.
+    static let thumbnailHeight: CGFloat = 148
 }
 #endif

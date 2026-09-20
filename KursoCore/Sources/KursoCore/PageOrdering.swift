@@ -85,4 +85,39 @@ public enum PageOrdering {
         }
         return changed
     }
+
+    /// Les nouveaux rangs apres avoir lache une page sur une autre.
+    ///
+    /// `above` dit de quel cote du voisin on l'a lachee : au-dessus, on passe
+    /// devant lui ; en dessous, derriere.
+    ///
+    /// Rend aussi une renumerotation complete quand les rangs se sont trop
+    /// rapproches a force d'etre coupes en deux. C'est rare, mais si on ne le
+    /// fait pas, deux pages finissent par partager le meme rang et l'ordre
+    /// devient celui du hasard.
+    public static func dropped(_ moving: UUID, onto target: UUID, above: Bool,
+                               among pages: [(id: UUID, position: Double)]) -> [UUID: Double] {
+        guard moving != target else { return [:] }
+        let ordered = pages.sorted { $0.position < $1.position }
+        let others = ordered.filter { $0.id != moving }
+        guard ordered.contains(where: { $0.id == moving }),
+              let index = others.firstIndex(where: { $0.id == target }) else { return [:] }
+
+        let slot = above ? index : index + 1
+        let previous = slot > 0 ? others[slot - 1].position : nil
+        let next = slot < others.count ? others[slot].position : nil
+        let landed = position(after: previous, before: next)
+
+        var all = others.map { (id: $0.id, position: $0.position) }
+        all.insert((id: moving, position: landed), at: slot)
+        guard needsRenumbering(all.map(\.position)) else { return [moving: landed] }
+
+        // Les rangs se touchent : on les rouvre tous, dans l'ordre obtenu.
+        let fresh = renumbered(count: all.count)
+        var changed: [UUID: Double] = [:]
+        for (rank, page) in all.enumerated() where page.position != fresh[rank] {
+            changed[page.id] = fresh[rank]
+        }
+        return changed
+    }
 }

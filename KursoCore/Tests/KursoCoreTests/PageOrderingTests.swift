@@ -108,3 +108,58 @@ struct PageMoveTests {
         #expect(!PageOrdering.needsRenumbering(all))
     }
 }
+
+@Suite("Glisser une page dans le cahier")
+struct PageDropTests {
+
+    private let a = UUID(), b = UUID(), c = UUID()
+
+    private var cahier: [(id: UUID, position: Double)] {
+        [(a, 0), (b, 1_000), (c, 2_000)]
+    }
+
+    private func ordre(_ changed: [UUID: Double], in pages: [(id: UUID, position: Double)]? = nil) -> [UUID] {
+        (pages ?? cahier).map { (id: $0.id, position: changed[$0.id] ?? $0.position) }
+            .sorted { $0.position < $1.position }
+            .map(\.id)
+    }
+
+    @Test("Lachee au-dessus de la premiere, elle devient la premiere")
+    func toTheFront() {
+        #expect(ordre(PageOrdering.dropped(c, onto: a, above: true, among: cahier)) == [c, a, b])
+    }
+
+    @Test("Lachee sous la derniere, elle devient la derniere")
+    func toTheBack() {
+        #expect(ordre(PageOrdering.dropped(a, onto: c, above: false, among: cahier)) == [b, c, a])
+    }
+
+    @Test("Lachee au milieu, elle se glisse entre les deux")
+    func inBetween() {
+        #expect(ordre(PageOrdering.dropped(c, onto: b, above: true, among: cahier)) == [a, c, b])
+        #expect(ordre(PageOrdering.dropped(a, onto: b, above: false, among: cahier)) == [b, a, c])
+    }
+
+    @Test("Lachee sur elle-meme, rien ne bouge")
+    func ontoItself() {
+        #expect(PageOrdering.dropped(b, onto: b, above: true, among: cahier).isEmpty)
+    }
+
+    @Test("Une seule page change de rang")
+    func onlyOneMoves() {
+        let changed = PageOrdering.dropped(c, onto: a, above: true, among: cahier)
+        #expect(changed.count == 1)
+    }
+
+    @Test("Des rangs qui se touchent sont rouverts")
+    func renumbersWhenCramped() {
+        // A force de couper en deux, deux rangs finissent par se rejoindre :
+        // sans renumerotation, l'ordre deviendrait celui du hasard.
+        let serres: [(id: UUID, position: Double)] = [(a, 0), (b, 0.0000001), (c, 0.0000002)]
+        let changed = PageOrdering.dropped(c, onto: a, above: true, among: serres)
+        #expect(changed.count == 3)
+        #expect(ordre(changed, in: serres) == [c, a, b])
+        let apres = serres.map { changed[$0.id] ?? $0.position }
+        #expect(!PageOrdering.needsRenumbering(apres))
+    }
+}
