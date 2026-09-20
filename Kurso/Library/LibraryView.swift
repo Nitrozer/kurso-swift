@@ -34,6 +34,9 @@ struct LibraryView: View {
     @State private var navigatorShown = true
     /// Les pages qu'on s'apprete a supprimer en bloc.
     @State private var pagesToDelete: [Page] = []
+    /// La page lue dans le volet de droite. Elle survit au changement de page
+    /// ecrite : ce qu'on lit a cote ne depend pas de ce qu'on ecrit.
+    @State private var sidePage: Page?
     /// Change pour demander a la feuille d'ouvrir le selecteur d'image.
     @State private var addImageRequest: UUID?
     @State private var openedCourse: Course?
@@ -283,6 +286,7 @@ struct LibraryView: View {
                 }
                 #endif
                 PageEditorView(page: page,
+                               sidePage: $sidePage,
                                onClose: { closeCahier() },
                                onOpenSlide: { openedPage = $0 },
                                addImageRequest: addImageRequest,

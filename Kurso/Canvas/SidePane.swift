@@ -133,28 +133,19 @@ struct SidePane: View {
 private struct ZoomablePage: UIViewRepresentable {
     let image: UIImage
 
-    func makeUIView(context: Context) -> UIScrollView {
-        let scroll = UIScrollView()
+    func makeUIView(context: Context) -> ReadingScroll {
+        let scroll = ReadingScroll()
         scroll.delegate = context.coordinator
-        // Six plutot que quatre : dans un volet etroit, le texte d'un enonce
-        // scanne demande d'aller chercher loin.
-        scroll.maximumZoomScale = 6
-        scroll.minimumZoomScale = 1
         scroll.backgroundColor = UIColor(Color(token: DesignTokens.Palette.paperAlt))
         scroll.showsVerticalScrollIndicator = false
         scroll.showsHorizontalScrollIndicator = false
         scroll.contentInsetAdjustmentBehavior = .never
-
-        let view = UIImageView(image: image)
-        view.contentMode = .scaleAspectFit
-        view.isUserInteractionEnabled = true
-        scroll.addSubview(view)
-        context.coordinator.page = view
+        scroll.page.image = image
         context.coordinator.scroll = scroll
 
-        // Double tape pour zoomer, comme dans n'importe quel lecteur : on
-        // vise un mot et on y est, sans pincer a deux doigts sur un iPad
-        // qu'on tient deja d'une main.
+        // Double tape pour zoomer, comme dans n'importe quel lecteur : on vise
+        // un mot et on y est, sans pincer a deux doigts sur un iPad qu'on
+        // tient deja d'une main.
         let twice = UITapGestureRecognizer(target: context.coordinator,
                                            action: #selector(Coordinator.zoomTwice))
         twice.numberOfTapsRequired = 2
@@ -162,38 +153,38 @@ private struct ZoomablePage: UIViewRepresentable {
         return scroll
     }
 
-    func updateUIView(_ scroll: UIScrollView, context: Context) {
-        guard let view = context.coordinator.page else { return }
-        if view.image !== image {
-            view.image = image
-            scroll.setZoomScale(1, animated: false)
-        }
-        // A pleine largeur, la hauteur suit le rapport de la page.
-        let width = scroll.bounds.width
-        guard width > 0, image.size.width > 0 else { return }
-        let height = width * image.size.height / image.size.width
-        view.frame = CGRect(x: 0, y: 0, width: width, height: height)
-        scroll.contentSize = CGSize(width: width, height: height)
+    func updateUIView(_ scroll: ReadingScroll, context: Context) {
+        guard scroll.page.image !== image else { return }
+        scroll.page.image = image
+        scroll.needsFraming = true
+        scroll.setNeedsLayout()
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     final class Coordinator: NSObject, UIScrollViewDelegate {
-        var page: UIImageView?
-        weak var scroll: UIScrollView?
+        weak var scroll: ReadingScroll?
 
-        func viewForZooming(in scrollView: UIScrollView) -> UIView? { page }
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+            (scrollView as? ReadingScroll)?.page
+        }
+
+        func scrollViewDidZoom(_ scrollView: UIScrollView) {
+            (scrollView as? ReadingScroll)?.centre()
+        }
 
         @objc func zoomTwice(_ gesture: UITapGestureRecognizer) {
             guard let scroll else { return }
-            if scroll.zoomScale > scroll.minimumZoomScale + 0.01 {
-                scroll.setZoomScale(scroll.minimumZoomScale, animated: true)
+            let fit = scroll.fitWidth
+            // Deja agrandie : on revient a la pleine largeur, la taille ou
+            // l'on lit. Pour voir la page entiere, on pince — le minimum
+            // descend jusque-la.
+            if scroll.zoomScale > fit + 0.01 {
+                scroll.setZoomScale(fit, animated: true)
                 return
             }
-            // On zoome SUR le point touche, pas au centre : c'est le mot
-            // qu'on vise qu'on veut voir grossir.
-            let target: CGFloat = 3
-            let point = gesture.location(in: page)
+            let target = fit * 3
+            let point = gesture.location(in: scroll.page)
             let size = CGSize(width: scroll.bounds.width / target,
                               height: scroll.bounds.height / target)
             scroll.zoom(to: CGRect(x: point.x - size.width / 2,
@@ -201,6 +192,71 @@ private struct ZoomablePage: UIViewRepresentable {
                                    width: size.width, height: size.height),
                         animated: true)
         }
+    }
+}
+
+/// Le defilement d'une page qu'on lit.
+///
+/// La mise en place se fait dans `layoutSubviews`, jamais dans la mise a jour
+/// de la vue SwiftUI : celle-ci passe souvent AVANT que la vue ait sa taille
+/// definitive, et le cadre restait alors celui d'une largeur nulle. La page
+/// paraissait zoomee sans qu'on puisse y faire quoi que ce soit.
+final class ReadingScroll: UIScrollView {
+    let page = UIImageView()
+    /// Une nouvelle image : on recadre a la pleine largeur.
+    var needsFraming = true
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        page.contentMode = .scaleAspectFit
+        page.isUserInteractionEnabled = true
+        addSubview(page)
+    }
+
+    required init?(coder: NSCoder) { fatalError("jamais depuis un storyboard") }
+
+    /// L'echelle a laquelle la page occupe toute la largeur : celle ou l'on
+    /// lit un enonce.
+    var fitWidth: CGFloat {
+        guard let size = page.image?.size, size.width > 0, bounds.width > 0 else { return 1 }
+        return bounds.width / size.width
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard let size = page.image?.size, size.width > 0, size.height > 0,
+              bounds.width > 0, bounds.height > 0 else { return }
+
+        // La vue d'image garde la taille REELLE de la page ; c'est le zoom qui
+        // la met a l'echelle. Sans cela, le zoom minimum ne veut rien dire.
+        if page.frame.size != size {
+            page.frame = CGRect(origin: .zero, size: size)
+            contentSize = size
+        }
+
+        // On peut dezoomer jusqu'a voir la page ENTIERE. C'est ce qui manquait :
+        // le minimum etait fige a un, donc on ne descendait jamais sous la
+        // pleine largeur.
+        let whole = min(bounds.width / size.width, bounds.height / size.height)
+        minimumZoomScale = whole
+        maximumZoomScale = max(fitWidth * 6, whole * 6)
+
+        if needsFraming {
+            needsFraming = false
+            setZoomScale(fitWidth, animated: false)
+        } else {
+            // Le volet a change de largeur : on reste dans les bornes.
+            setZoomScale(min(max(zoomScale, minimumZoomScale), maximumZoomScale), animated: false)
+        }
+        centre()
+    }
+
+    /// Une page plus petite que le cadre se pose au milieu, pas en haut a
+    /// gauche.
+    func centre() {
+        let extraX = max(0, (bounds.width - contentSize.width * zoomScale) / 2)
+        let extraY = max(0, (bounds.height - contentSize.height * zoomScale) / 2)
+        contentInset = UIEdgeInsets(top: extraY, left: extraX, bottom: extraY, right: extraX)
     }
 }
 #endif

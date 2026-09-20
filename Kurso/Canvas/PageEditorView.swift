@@ -10,6 +10,12 @@ import KursoModels
 /// Mac : l.ecriture se relit a cote du volet markdown (§11, etape 1).
 struct PageEditorView: View {
     @Bindable var page: Page
+    /// La page qu'on lit a cote.
+    ///
+    /// Elle vit chez le PARENT : cette vue est reconstruite des qu'on ouvre
+    /// une autre page, et le volet disparaissait alors qu'on venait de le
+    /// poser. Ce qu'on lit a cote ne depend pas de ce qu'on ecrit.
+    @Binding var sidePage: Page?
     var onClose: () -> Void = {}
     /// Ouvre une autre diapo du meme PDF.
     var onOpenSlide: (Page) -> Void = { _ in }
@@ -70,8 +76,6 @@ struct PageEditorView: View {
     @State private var isTakingPhoto = false
     /// Le bloc de texte qui vient d'etre cree et attend le clavier.
     @State private var textFocusRequest: UUID?
-    /// La page qu'on lit a cote, et la largeur de son volet.
-    @State private var sidePage: Page?
     @State private var isChoosingSide = false
     /// Zero : pas encore reglee. On propose alors la moitie de la place.
     @AppStorage("volet.largeur") private var sideWidth: Double = 0
@@ -105,12 +109,14 @@ struct PageEditorView: View {
     /// vide : PencilKit signalait ce vide comme un changement, on l'enregistrait
     /// par-dessus la page, et le travail etait perdu a la simple ouverture.
     init(page: Page,
+         sidePage: Binding<Page?> = .constant(nil),
          onClose: @escaping () -> Void = {},
          onOpenSlide: @escaping (Page) -> Void = { _ in },
          addImageRequest: UUID? = nil,
          isCoveredBySheet: Bool = false,
          onProposeCards: @escaping (Page) -> Void = { _ in }) {
         _page = Bindable(page)
+        _sidePage = sidePage
         self.onClose = onClose
         self.onOpenSlide = onOpenSlide
         self.addImageRequest = addImageRequest
