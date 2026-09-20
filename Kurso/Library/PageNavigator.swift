@@ -110,7 +110,7 @@ struct PageNavigator: View {
         let isCurrent = page.id == current?.id
         return Button { onSelect(page) } label: {
             VStack(spacing: 5) {
-                PagePreview(page: page)
+                PagePreview(page: page, renderWidth: 220)
                     .frame(width: 108, height: 148)
                     .background(K.paperAlt)
                     .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))

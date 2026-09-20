@@ -42,14 +42,9 @@ struct PageCard: View {
     }
 
     private var preview: some View {
-        ZStack {
-            DottedPaper()
-            if let image = thumbnail {
-                image.resizable().scaledToFit().padding(6)
-            }
-        }
-        .frame(height: 96)
-        .clipped()
+        PagePreview(page: page, renderWidth: 320)
+            .frame(height: 96)
+            .clipped()
     }
 
     /// Une vignette qui represente tout un PDF porte son nom, sans numero.
@@ -93,17 +88,6 @@ struct PageCard: View {
         .overlay(alignment: .top) {
             Rectangle().fill(isActive ? K.brand : K.ink).frame(height: 3)
         }
-    }
-
-    private var thumbnail: Image? {
-        guard let data = page.drawing, let drawing = try? PKDrawing(data: data),
-              !drawing.bounds.isEmpty else { return nil }
-        let rendered = drawing.image(from: drawing.bounds, scale: 1)
-        #if canImport(UIKit)
-        return Image(uiImage: rendered)
-        #else
-        return Image(nsImage: rendered)
-        #endif
     }
 
     /// L'etat reel de la page, calcule depuis ses cartes (§3). Il etait ecrit
@@ -153,15 +137,23 @@ struct DottedPaper: View {
     }
 }
 
-/// L'apercu d'une page : son ecriture, sa photo, ou le papier nu.
+/// L'apercu d'une page : TOUT ce qu'elle porte.
+///
+/// Le fond — photo, diapo ou papier reglé —, le trace, les images posees et
+/// les blocs de texte tapes, chacun a sa place. Le rendu est celui de
+/// l'export : deux dessins differents pour la meme page finiraient par
+/// diverger, et l'apercu mentirait sur ce que la page contient.
 ///
 /// Partage entre la planche des cahiers et la liste ordonnee d'un cahier :
 /// deux apercus differents pour la meme page seraient deroutants.
 struct PagePreview: View {
     let page: Page
+    /// Largeur du rendu, en points. Une vignette de panneau n'a pas besoin
+    /// d'autant de matiere qu'une carte de planche.
+    var renderWidth: CGFloat = 220
 
     #if os(iOS)
-    @State private var slide: CGImage?
+    @State private var rendered: UIImage?
     /// On interroge la base plutot qu'un cache : un PDF importe a l'instant
     /// n'y serait pas encore, et sa vignette resterait blanche.
     @Query private var assets: [PDFAsset]
@@ -171,47 +163,41 @@ struct PagePreview: View {
         ZStack {
             DottedPaper()
             #if os(iOS)
-            // La diapo d'un PDF : sans elle, toutes les pages importees
-            // s'affichaient blanches dans le panneau.
-            if let slide {
-                Image(decorative: slide, scale: 1).resizable().scaledToFit()
+            if let rendered {
+                // Ancree EN HAUT, pas ajustee : une page fait 1 240 sur 3 000,
+                // l'ajuster entierement la reduirait a un trait illisible. On
+                // montre son haut, comme une vraie pile de feuilles.
+                //
+                // La taille doit etre donnee en dur. Avec `maxWidth` et
+                // `maxHeight` a l'infini, l'ancrage n'a aucun effet : l'image
+                // se recentre, et le haut de la page — donc souvent la
+                // premiere ligne ecrite — sort du cadre.
+                GeometryReader { geo in
+                    Image(uiImage: rendered)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+                        .clipped()
+                }
             }
-            #endif
-            if let image = photo {
-                image.resizable().scaledToFill()
-            }
+            #else
             if let image = ink {
                 image.resizable().scaledToFit().padding(5)
             }
+            #endif
         }
         .clipped()
         #if os(iOS)
-        .task(id: page.id) { await loadSlide() }
+        .task(id: PageThumbnails.signature(page)) { redraw() }
         #endif
     }
 
     #if os(iOS)
-    private func loadSlide() async {
-        guard slide == nil,
-              let assetID = page.pdfAssetID,
-              let index = page.pdfPageIndex,
-              let fileName = assets.first(where: { $0.id == assetID })?.fileName
-        else { return }
-        let rendered = await Task.detached(priority: .utility) {
-            PDFStore.render(fileName: fileName, pageIndex: index, width: 240)
-        }.value
-        slide = rendered
+    private func redraw() {
+        PDFAssetLookup.remember(assets)
+        rendered = PageThumbnails.image(for: page, width: renderWidth)
     }
     #endif
-
-    private var photo: Image? {
-        #if canImport(UIKit)
-        guard let data = page.photo, let ui = UIImage(data: data) else { return nil }
-        return Image(uiImage: ui)
-        #else
-        return nil
-        #endif
-    }
 
     private var ink: Image? {
         guard let data = page.drawing, let drawing = try? PKDrawing(data: data),

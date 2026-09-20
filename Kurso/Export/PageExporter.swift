@@ -27,6 +27,31 @@ enum PageExporter {
         }
     }
 
+    /// La page entiere en une image : fond, trace, images posees, blocs de
+    /// texte. Tout ce que l'export met dans le PDF.
+    ///
+    /// C'est le MEME dessin que l'export, a une autre echelle. Deux rendus
+    /// differents pour la meme page finiraient par diverger, et l'apercu
+    /// mentirait sur ce que la page contient.
+    @MainActor
+    static func image(_ page: Page, width: CGFloat) -> UIImage? {
+        let bounds = trimmed(page)
+        guard bounds.width > 0, bounds.height > 0, width > 0 else { return nil }
+        let ratio = width / bounds.width
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 2
+        format.opaque = true
+        let size = CGSize(width: width, height: bounds.height * ratio)
+        return UIGraphicsImageRenderer(size: size, format: format).image { context in
+            context.cgContext.scaleBy(x: ratio, y: ratio)
+            // JAMAIS sous 1 : PKDrawing ne rend rien en dessous, et l'encre
+            // disparaissait purement et simplement de l'apercu. On economise
+            // sur la densite, pas sur la presence.
+            draw(page, in: bounds, context: context.cgContext,
+                 image: backdrop(for: page), inkScale: max(ratio * 2, 1))
+        }
+    }
+
     /// La hauteur reellement occupee, jamais les 3000 points du canevas.
     ///
     /// Une page a peine ecrite s'exportait en bande de 1240 x 3000 :
@@ -102,7 +127,7 @@ enum PageExporter {
 
     @MainActor
     private static func draw(_ page: Page, in bounds: CGRect, context: CGContext,
-                             image: CGImage?) {
+                             image: CGImage?, inkScale: CGFloat = 2) {
         UIColor.white.setFill()
         context.fill(bounds)
 
@@ -117,7 +142,7 @@ enum PageExporter {
         if let data = page.drawing,
            let drawing = try? PKDrawing(data: data),
            !drawing.strokes.isEmpty {
-            drawing.image(from: bounds, scale: 2).draw(in: bounds)
+            drawing.image(from: bounds, scale: inkScale).draw(in: bounds)
         }
 
         // Ce qu'on a pose PAR-DESSUS le trace : images deplacees, blocs de
