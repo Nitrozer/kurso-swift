@@ -18,15 +18,30 @@ import KursoModels
 struct SidePane: View {
     let page: Page
     @Binding var width: CGFloat
+    /// La largeur disponible pour le canevas ET le volet. Les bornes en
+    /// dependent : un volet de six cents points est la moitie d'un ecran et
+    /// le tiers d'un autre.
+    let available: CGFloat
     var onChoose: () -> Void
     var onClose: () -> Void
 
     @State private var rendered: UIImage?
     @State private var dragStart: CGFloat?
 
-    /// En dessous, on ne lit plus rien ; au-dela, on n'ecrit plus.
-    static let minimum: CGFloat = 260
-    static let maximum: CGFloat = 620
+    /// En dessous, on ne lit plus rien.
+    static let minimum: CGFloat = 280
+
+    /// Jusqu'aux trois quarts de la place : lire un enonce demande parfois
+    /// presque tout l'ecran, et on reduit d'un geste pour rediger.
+    static func maximum(in available: CGFloat) -> CGFloat {
+        max(minimum, available * 0.75)
+    }
+
+    /// La moitie, a la premiere ouverture. C'est ce qu'on attend d'un volet
+    /// qu'on met « a cote » : deux moities, pas une bande.
+    static func suggested(in available: CGFloat) -> CGFloat {
+        min(max(available * 0.5, minimum), maximum(in: available))
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -39,7 +54,7 @@ struct SidePane: View {
                     Color.clear
                 }
             }
-            .frame(width: width)
+            .frame(width: min(max(width, SidePane.minimum), SidePane.maximum(in: available)))
             .background(K.paperAlt)
         }
         .task(id: PageThumbnails.signature(page)) {
@@ -66,7 +81,8 @@ struct SidePane: View {
                         let start = dragStart ?? width
                         dragStart = start
                         width = min(max(start - move.translation.width,
-                                        SidePane.minimum), SidePane.maximum)
+                                        SidePane.minimum),
+                                    SidePane.maximum(in: available))
                     }
                     .onEnded { _ in dragStart = nil }
             )
@@ -120,7 +136,9 @@ private struct ZoomablePage: UIViewRepresentable {
     func makeUIView(context: Context) -> UIScrollView {
         let scroll = UIScrollView()
         scroll.delegate = context.coordinator
-        scroll.maximumZoomScale = 4
+        // Six plutot que quatre : dans un volet etroit, le texte d'un enonce
+        // scanne demande d'aller chercher loin.
+        scroll.maximumZoomScale = 6
         scroll.minimumZoomScale = 1
         scroll.backgroundColor = UIColor(Color(token: DesignTokens.Palette.paperAlt))
         scroll.showsVerticalScrollIndicator = false
@@ -129,8 +147,18 @@ private struct ZoomablePage: UIViewRepresentable {
 
         let view = UIImageView(image: image)
         view.contentMode = .scaleAspectFit
+        view.isUserInteractionEnabled = true
         scroll.addSubview(view)
         context.coordinator.page = view
+        context.coordinator.scroll = scroll
+
+        // Double tape pour zoomer, comme dans n'importe quel lecteur : on
+        // vise un mot et on y est, sans pincer a deux doigts sur un iPad
+        // qu'on tient deja d'une main.
+        let twice = UITapGestureRecognizer(target: context.coordinator,
+                                           action: #selector(Coordinator.zoomTwice))
+        twice.numberOfTapsRequired = 2
+        scroll.addGestureRecognizer(twice)
         return scroll
     }
 
@@ -152,7 +180,27 @@ private struct ZoomablePage: UIViewRepresentable {
 
     final class Coordinator: NSObject, UIScrollViewDelegate {
         var page: UIImageView?
+        weak var scroll: UIScrollView?
+
         func viewForZooming(in scrollView: UIScrollView) -> UIView? { page }
+
+        @objc func zoomTwice(_ gesture: UITapGestureRecognizer) {
+            guard let scroll else { return }
+            if scroll.zoomScale > scroll.minimumZoomScale + 0.01 {
+                scroll.setZoomScale(scroll.minimumZoomScale, animated: true)
+                return
+            }
+            // On zoome SUR le point touche, pas au centre : c'est le mot
+            // qu'on vise qu'on veut voir grossir.
+            let target: CGFloat = 3
+            let point = gesture.location(in: page)
+            let size = CGSize(width: scroll.bounds.width / target,
+                              height: scroll.bounds.height / target)
+            scroll.zoom(to: CGRect(x: point.x - size.width / 2,
+                                   y: point.y - size.height / 2,
+                                   width: size.width, height: size.height),
+                        animated: true)
+        }
     }
 }
 #endif

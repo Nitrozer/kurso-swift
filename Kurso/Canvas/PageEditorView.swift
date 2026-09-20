@@ -73,7 +73,10 @@ struct PageEditorView: View {
     /// La page qu'on lit a cote, et la largeur de son volet.
     @State private var sidePage: Page?
     @State private var isChoosingSide = false
-    @AppStorage("volet.largeur") private var sideWidth: Double = 380
+    /// Zero : pas encore reglee. On propose alors la moitie de la place.
+    @AppStorage("volet.largeur") private var sideWidth: Double = 0
+    /// La largeur du canevas et du volet reunis, mesuree.
+    @State private var editorWidth: CGFloat = 0
     @State private var recorder = LectureRecorder()
     /// Les traits horodates de l'enregistrement en cours.
     @State private var marks: [StrokeTimestamp] = []
@@ -227,6 +230,16 @@ struct PageEditorView: View {
             .animation(.snappy(duration: 0.18), value: isDropTargeted)
             rightSide
             }
+            .background(
+                GeometryReader { geo in
+                    // Mesure seulement : un fond transparent ne change rien a
+                    // la mise en page, et le volet a besoin de savoir de
+                    // combien de place il dispose.
+                    Color.clear
+                        .onAppear { editorWidth = geo.size.width }
+                        .onChange(of: geo.size.width) { _, now in editorWidth = now }
+                }
+            )
             #else
             // Sur Mac : le manuscrit se relit, le markdown s'ecrit. PKCanvasView
             // n'existe pas sur macOS, mais PKDrawing sait se rendre en image.
@@ -297,6 +310,10 @@ struct PageEditorView: View {
                     print("[KURSO] depot a \(point) → fraction \(String(describing: pageFraction(of: point)))")
                 }
             }
+            if ProcessInfo.processInfo.arguments.contains("-openSidePicker") {
+                try? await Task.sleep(for: .seconds(2))
+                isChoosingSide = true
+            }
             // Ouvre le volet de lecture sur une autre page du cahier.
             if ProcessInfo.processInfo.arguments.contains("-openSidePane") {
                 try? await Task.sleep(for: .seconds(2))
@@ -305,6 +322,9 @@ struct PageEditorView: View {
                     .sorted { $0.position < $1.position }
                 if let lue = voisines.first {
                     marginShown = false
+                    if sideWidth <= 0, editorWidth > 0 {
+                        sideWidth = Double(SidePane.suggested(in: editorWidth))
+                    }
                     sidePage = lue
                 }
             }
@@ -323,20 +343,14 @@ struct PageEditorView: View {
             #endif
         }
         #if os(iOS)
-        .onChange(of: isCoveredBySheet) { _, covered in
-            if covered { canvasHandle.pauseWriting() } else { resumeWriting() }
-        }
-        // Le champ du titre prend le premier repondant, et la palette
-        // PencilKit disparait avec. On la rend des qu'on quitte le champ.
-        .onChange(of: titleFocused) { _, focused in
-            if !focused { resumeWriting() }
-        }
-        .onChange(of: isMasking) { _, masking in
-            if !masking { resumeWriting() }
-        }
-        // Revenir de l'arriere-plan laissait la palette rangee.
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { resumeWriting() }
+        // UNE seule regle, plutot qu'un declencheur par cause.
+        //
+        // Cinq `onChange` separes se contredisaient des que deux causes se
+        // chevauchaient — fermer le champ du titre rendait l'ecriture alors
+        // qu'une feuille etait ouverte — et le corps de la vue finissait par
+        // depasser ce que le verificateur de types sait resoudre.
+        .onChange(of: wantsWriting) { _, wants in
+            if wants { canvasHandle.resumeWriting() } else { canvasHandle.pauseWriting() }
         }
         #endif
         #if os(iOS)
@@ -355,6 +369,9 @@ struct PageEditorView: View {
                     // Les deux volets ne tiennent pas cote a cote : celui des
                     // cartes s'efface, et revient quand on ferme la lecture.
                     marginShown = false
+                    if sideWidth <= 0, editorWidth > 0 {
+                        sideWidth = Double(SidePane.suggested(in: editorWidth))
+                    }
                     sidePage = chosen
                 },
                 onCancel: { isChoosingSide = false }
@@ -971,6 +988,7 @@ struct PageEditorView: View {
                 // convertie ici plutot que de trainer deux types dans le volet.
                 width: Binding(get: { CGFloat(sideWidth) },
                                set: { sideWidth = Double($0) }),
+                available: editorWidth,
                 onChoose: { isChoosingSide = true },
                 onClose: { sidePage = nil }
             )
@@ -1000,10 +1018,20 @@ struct PageEditorView: View {
         }
     }
 
+    /// Vrai quand plus rien ne dispute l'ecriture au canevas.
+    ///
+    /// Le champ du titre, une feuille par-dessus, le masquage d'une diapo, le
+    /// choix d'une page a lire, l'arriere-plan : chacun prend le clavier ou
+    /// l'ecran, et la palette PencilKit s'en va avec.
+    private var wantsWriting: Bool {
+        !isCoveredBySheet && !titleFocused && !isMasking
+            && !isChoosingSide && !isTakingPhoto && scenePhase == .active
+    }
+
     /// Rend l'ecriture au canevas, si rien d'autre ne la reclame.
     private func resumeWriting() {
         #if os(iOS)
-        guard !isCoveredBySheet, !titleFocused, !isMasking else { return }
+        guard wantsWriting else { return }
         canvasHandle.resumeWriting()
         #endif
     }

@@ -18,6 +18,8 @@ struct SidePagePicker: View {
 
     @Query(sort: \Course.name) private var courses: [Course]
     @State private var chosen: UUID?
+    /// L'intercalaire regarde dans le cahier choisi.
+    @State private var divider: PageTag?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -38,6 +40,19 @@ struct SidePagePicker: View {
                 WrapLayout(spacing: 7, lineSpacing: 7) {
                     ForEach(available, id: \.id) { course in
                         chip(course)
+                    }
+                }
+
+                // Les intercalaires du cahier choisi : c'est ce qui permet de
+                // tomber sur ses TD sans parcourir tout un semestre.
+                let tags = PageTag.dividers(for: inCourse.map(\.tagToken))
+                if !tags.isEmpty {
+                    WrapLayout(spacing: 6, lineSpacing: 6) {
+                        divide(nil, label: "Tout", count: inCourse.count)
+                        ForEach(tags, id: \.self) { tag in
+                            divide(tag, label: tag.label,
+                                   count: PageTag.count(tag, in: inCourse.map(\.tagToken)))
+                        }
                     }
                 }
 
@@ -70,6 +85,7 @@ struct SidePagePicker: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(K.paper)
         .onAppear { chosen = chosen ?? preferred?.id ?? available.first?.id }
+        .onChange(of: chosen) { _, _ in divider = nil }
     }
 
     /// Les cahiers qui ont autre chose a lire que la page ouverte.
@@ -79,11 +95,40 @@ struct SidePagePicker: View {
         }
     }
 
-    private var pages: [Page] {
+    /// Toutes les pages lisibles du cahier choisi, intercalaires compris.
+    private var inCourse: [Page] {
         guard let chosen, let course = available.first(where: { $0.id == chosen }) else { return [] }
         return (course.pages ?? [])
             .filter { $0.id != excluding }
             .sorted { $0.position < $1.position }
+    }
+
+    private var pages: [Page] {
+        PageTag.keep(inCourse, matching: divider) { $0.tagToken }
+    }
+
+    private func divide(_ tag: PageTag?, label: String, count: Int) -> some View {
+        let isOn = divider == tag
+        return Button { divider = tag } label: {
+            HStack(spacing: 5) {
+                if let tag {
+                    Circle()
+                        .fill(Color(token: tag.colorToken))
+                        .frame(width: 7, height: 7)
+                }
+                Text(label)
+                    .font(KFont.body(10.5, weight: .extraBold))
+                    .foregroundStyle(isOn ? K.paperAlt : K.ink)
+                Text("\(count)")
+                    .font(KFont.mono(9))
+                    .foregroundStyle(isOn ? K.paperAlt.opacity(0.7) : K.inkSoft)
+            }
+            .padding(.vertical, 6).padding(.horizontal, 10)
+            .background(isOn ? K.ink : .clear, in: Capsule())
+            .overlay(Capsule().strokeBorder(isOn ? .clear : K.ink.opacity(0.2), lineWidth: 1.5))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     private func chip(_ course: Course) -> some View {
