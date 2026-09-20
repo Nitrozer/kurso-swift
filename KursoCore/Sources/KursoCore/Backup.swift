@@ -23,6 +23,10 @@ public enum Backup {
         public var pages: [PageRow]
         public var cards: [CardRow]
         public var images: [ImageRow]
+        /// FACULTATIF, et c'est indispensable : Swift exige toutes les cles
+        /// d'un tableau non optionnel, meme avec une valeur par defaut — une
+        /// archive ecrite avant les blocs de texte deviendrait illisible.
+        public var texts: [TextRow]?
         public var assets: [AssetRow]
         public var recordings: [RecordingRow]
         public var assignments: [AssignmentRow]
@@ -34,7 +38,8 @@ public enum Backup {
             version: Int = Backup.currentVersion,
             createdAt: Date = .now,
             courses: [CourseRow] = [], pages: [PageRow] = [], cards: [CardRow] = [],
-            images: [ImageRow] = [], assets: [AssetRow] = [], recordings: [RecordingRow] = [],
+            images: [ImageRow] = [], texts: [TextRow]? = nil,
+            assets: [AssetRow] = [], recordings: [RecordingRow] = [],
             assignments: [AssignmentRow] = [], seasons: [SeasonRow] = [], slots: [SlotRow] = [],
             player: PlayerRow? = nil
         ) {
@@ -44,6 +49,7 @@ public enum Backup {
             self.pages = pages
             self.cards = cards
             self.images = images
+            self.texts = texts
             self.assets = assets
             self.recordings = recordings
             self.assignments = assignments
@@ -77,12 +83,16 @@ public enum Backup {
         public var drawing: Data?, photo: Data?
         public var photoX: Double?, photoY: Double?, photoW: Double?, photoH: Double?
         public var pdfAssetID: UUID?, pdfPageIndex: Int?, courseID: UUID?
+        /// Facultatif : une archive ecrite avant les intercalaires n'en porte
+        /// pas, et elle doit continuer de se relire.
+        public var tagToken: String?
         public init(id: UUID, title: String, titleWasEdited: Bool, position: Double,
                     templateRaw: String, createdAt: Date, writingSeconds: Int, markdown: String,
                     recognizedText: String, sessionEnd: Date?, sprintProposedAt: Date?,
                     masteredAt: Date?, drawing: Data?, photo: Data?,
                     photoX: Double?, photoY: Double?, photoW: Double?, photoH: Double?,
-                    pdfAssetID: UUID?, pdfPageIndex: Int?, courseID: UUID?) {
+                    pdfAssetID: UUID?, pdfPageIndex: Int?, courseID: UUID?,
+                    tagToken: String? = nil) {
             self.id = id; self.title = title; self.titleWasEdited = titleWasEdited
             self.position = position; self.templateRaw = templateRaw; self.createdAt = createdAt
             self.writingSeconds = writingSeconds; self.markdown = markdown
@@ -91,6 +101,7 @@ public enum Backup {
             self.drawing = drawing; self.photo = photo
             self.photoX = photoX; self.photoY = photoY; self.photoW = photoW; self.photoH = photoH
             self.pdfAssetID = pdfAssetID; self.pdfPageIndex = pdfPageIndex; self.courseID = courseID
+            self.tagToken = tagToken
         }
     }
 
@@ -123,6 +134,20 @@ public enum Backup {
                     height: Double, order: Double, pageID: UUID?) {
             self.id = id; self.data = data; self.x = x; self.y = y
             self.width = width; self.height = height; self.order = order; self.pageID = pageID
+        }
+    }
+
+    /// Un bloc de texte tape au clavier. Le RTF voyage avec : sans lui, on
+    /// retrouverait le texte nu, sans sa mise en forme.
+    public struct TextRow: Codable, Equatable, Sendable {
+        public var id: UUID, rtf: Data?, plain: String
+        public var x: Double, y: Double, width: Double, height: Double
+        public var order: Double, pageID: UUID?
+        public init(id: UUID, rtf: Data?, plain: String, x: Double, y: Double,
+                    width: Double, height: Double, order: Double, pageID: UUID?) {
+            self.id = id; self.rtf = rtf; self.plain = plain
+            self.x = x; self.y = y; self.width = width; self.height = height
+            self.order = order; self.pageID = pageID
         }
     }
 

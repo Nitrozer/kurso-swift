@@ -243,7 +243,11 @@ struct LibraryView: View {
                     },
                     onDuplicate: { duplicate($0) },
                     onDelete: { pageToDelete = $0 },
-                    onCollapse: { navigatorShown = false }
+                    onCollapse: { navigatorShown = false },
+                    onTag: { page, tag in
+                        page.tagToken = tag?.rawValue ?? ""
+                        try? context.save()
+                    }
                 )
                 .transition(.move(edge: .leading))
                 Rectangle().fill(K.ink.opacity(0.12)).frame(width: 1)

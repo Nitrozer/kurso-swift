@@ -38,6 +38,11 @@ import SwiftData
             }
         }
     }
+    /// L'intercalaire du cahier : « cours », « exercice », « td »,
+    /// « correction », ou rien. Liste fermee, definie par `PageTag` : on pose
+    /// un intercalaire, on n'en cree jamais (§12).
+    public var tagToken: String = ""
+
     public var createdAt: Date = Date()
     /// Fin du creneau de cours, si la page est rattachee.
     public var sessionEnd: Date?

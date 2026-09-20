@@ -33,7 +33,7 @@ enum BackupStore {
                       photoX: page.photoBox?.x, photoY: page.photoBox?.y,
                       photoW: page.photoBox?.width, photoH: page.photoBox?.height,
                       pdfAssetID: page.pdfAssetID, pdfPageIndex: page.pdfPageIndex,
-                      courseID: page.course?.id)
+                      courseID: page.course?.id, tagToken: page.tagToken)
             },
             cards: all(Card.self).map { card in
                 .init(id: card.id, kindRaw: card.kindRaw, question: card.question,
@@ -49,6 +49,11 @@ enum BackupStore {
                 .init(id: image.id, data: image.data, x: image.x, y: image.y,
                       width: image.width, height: image.height, order: image.order,
                       pageID: image.page?.id)
+            },
+            texts: all(PageText.self).map { block in
+                .init(id: block.id, rtf: block.rtf, plain: block.plain,
+                      x: block.x, y: block.y, width: block.width, height: block.height,
+                      order: block.order, pageID: block.page?.id)
             },
             assets: all(PDFAsset.self).map { asset in
                 .init(id: asset.id, fileName: asset.fileName, title: asset.title,
@@ -157,6 +162,7 @@ enum BackupStore {
             page.photoBox = rect(row.photoX, row.photoY, row.photoW, row.photoH)
             page.pdfAssetID = row.pdfAssetID
             page.pdfPageIndex = row.pdfPageIndex
+            page.tagToken = row.tagToken ?? ""
             page.course = row.courseID.flatMap { courses[$0] }
             context.insert(page)
             pages[row.id] = page
@@ -178,6 +184,17 @@ enum BackupStore {
             card.isInMistakeBook = row.isInMistakeBook
             card.page = row.pageID.flatMap { pages[$0] }
             context.insert(card)
+        }
+
+        for row in archive.texts ?? [] {
+            let block = PageText(plain: row.plain)
+            block.id = row.id
+            block.rtf = row.rtf
+            block.x = row.x; block.y = row.y
+            block.width = row.width; block.height = row.height
+            block.order = row.order
+            block.page = row.pageID.flatMap { pages[$0] }
+            context.insert(block)
         }
 
         for row in archive.images {

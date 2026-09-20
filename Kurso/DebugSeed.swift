@@ -33,6 +33,7 @@ enum DebugSeed {
         // Une ligne en prose et une vraie definition : la demo montre ainsi
         // les deux moities du decoupage, celle qui donne une carte et celle
         // qui n'en donne pas.
+        page.tagToken = PageTag.cours.rawValue
         page.recognizedText = "DM d'automatique à rendre pour le 15 octobre\nTerme intégral: annule l'erreur statique"
         page.drawing = handwriting().dataRepresentation()
         context.insert(page)
@@ -101,6 +102,7 @@ enum DebugSeed {
         let justFinished = Page(title: "Tas binaires", createdAt: .now)
         justFinished.titleWasEdited = true
         justFinished.course = course
+        justFinished.tagToken = PageTag.exercice.rawValue
         justFinished.sessionEnd = Date().addingTimeInterval(-300)
         justFinished.recognizedText = """
         Tas binaires

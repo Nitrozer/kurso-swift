@@ -16,16 +16,22 @@ struct PageNavigator: View {
     var onDuplicate: (Page) -> Void
     var onDelete: (Page) -> Void
     var onCollapse: () -> Void = {}
+    /// Poser ou retirer l'intercalaire d'une page.
+    var onTag: (Page, PageTag?) -> Void = { _, _ in }
+
+    /// L'intercalaire regarde. `nil` : tout le cahier.
+    @State private var divider: PageTag?
 
     enum Kind { case handwritten, pdf, image }
 
     var body: some View {
         VStack(spacing: 0) {
             collapseBar
+            dividers
             ScrollView {
                 LazyVStack(spacing: 12) {
-                    ForEach(Array(pages.enumerated()), id: \.element.id) { index, page in
-                        thumbnail(page, number: index + 1)
+                    ForEach(shown, id: \.page.id) { entry in
+                        thumbnail(entry.page, number: entry.number)
                     }
                     // L'emplacement suivant, en pointilles : on voit ou la
                     // prochaine page ira avant meme de l'avoir creee.
@@ -38,6 +44,67 @@ struct PageNavigator: View {
         }
         .frame(width: 168)
         .background(K.paper)
+        // Un intercalaire vide ne reste pas selectionne : on se retrouverait
+        // devant un cahier vide sans comprendre pourquoi.
+        .onChange(of: tokens) { _, now in
+            divider = PageTag.stillThere(divider, in: now)
+        }
+    }
+
+    private var tokens: [String] { pages.map(\.tagToken) }
+
+    /// Les pages montrees, avec leur numero d'origine.
+    ///
+    /// Le numero est celui de la page DANS LE CAHIER, pas dans le filtre :
+    /// une page reste la septieme meme quand on ne regarde que les exercices.
+    private var shown: [(page: Page, number: Int)] {
+        let numbered = pages.enumerated().map { (page: $0.element, number: $0.offset + 1) }
+        return PageTag.keep(numbered, matching: divider) { $0.page.tagToken }
+    }
+
+    /// Les intercalaires du cahier, en onglets.
+    @ViewBuilder
+    private var dividers: some View {
+        let available = PageTag.dividers(for: tokens)
+        if !available.isEmpty {
+            WrapLayout(spacing: 6, lineSpacing: 6) {
+                tab(nil, label: "Tout", count: pages.count)
+                ForEach(available, id: \.self) { tag in
+                    tab(tag, label: tag.label, count: PageTag.count(tag, in: tokens))
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(K.paper)
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(K.ink.opacity(0.12)).frame(height: 1)
+            }
+        }
+    }
+
+    private func tab(_ tag: PageTag?, label: String, count: Int) -> some View {
+        let isOn = divider == tag
+        return Button { divider = tag } label: {
+            HStack(spacing: 5) {
+                if let tag {
+                    Circle()
+                        .fill(Color(token: tag.colorToken))
+                        .frame(width: 7, height: 7)
+                }
+                Text(label)
+                    .font(KFont.body(10.5, weight: .extraBold))
+                    .foregroundStyle(isOn ? K.paperAlt : K.ink)
+                Text("\(count)")
+                    .font(KFont.mono(9))
+                    .foregroundStyle(isOn ? K.paperAlt.opacity(0.7) : K.inkSoft)
+            }
+            .padding(.vertical, 6).padding(.horizontal, 10)
+            .background(isOn ? K.ink : .clear, in: Capsule())
+            .overlay(Capsule().strokeBorder(isOn ? .clear : K.ink.opacity(0.2), lineWidth: 1.5))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     /// Refermer le panneau.
@@ -118,6 +185,11 @@ struct PageNavigator: View {
                         .strokeBorder(isCurrent ? K.brand : K.ink.opacity(0.22),
                                       lineWidth: isCurrent ? 3 : 1.5))
                 HStack(spacing: 5) {
+                    if let tag = PageTag.named(page.tagToken) {
+                        Circle()
+                            .fill(Color(token: tag.colorToken))
+                            .frame(width: 7, height: 7)
+                    }
                     Text("\(number)")
                         .font(KFont.mono(9.5))
                         .foregroundStyle(isCurrent ? K.brand : K.inkSoft)
@@ -131,6 +203,16 @@ struct PageNavigator: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
+            Menu("Intercalaire") {
+                ForEach(PageTag.allCases, id: \.self) { tag in
+                    Button(tag.label) { onTag(page, tag) }
+                }
+                if !page.tagToken.isEmpty {
+                    Divider()
+                    Button("Retirer") { onTag(page, nil) }
+                }
+            }
+            Divider()
             Button("Ajouter une page avant") { onAdd(.handwritten, before(page)) }
             Button("Ajouter une page après") { onAdd(.handwritten, after(page)) }
             Button("Dupliquer") { onDuplicate(page) }

@@ -864,6 +864,21 @@ struct PageEditorView: View {
                 Button("Prendre une photo") { isTakingPhoto = true }
             }
             Button("Ajouter du texte") { addTextBlock() }
+            Menu("Intercalaire") {
+                ForEach(PageTag.allCases, id: \.self) { tag in
+                    Button(tag.label) {
+                        page.tagToken = tag.rawValue
+                        try? context.save()
+                    }
+                }
+                if !page.tagToken.isEmpty {
+                    Divider()
+                    Button("Retirer") {
+                        page.tagToken = ""
+                        try? context.save()
+                    }
+                }
+            }
             if hasBackdrop {
                 Button(isCapturingRegion ? "Annuler la capture" : "Capturer un morceau") {
                     isCapturingRegion.toggle()

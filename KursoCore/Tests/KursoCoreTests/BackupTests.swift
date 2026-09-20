@@ -70,4 +70,22 @@ struct BackupTests {
         #expect(name.hasSuffix(".kursobackup"))
         #expect(name.contains("2027-01-15") || name.contains("2027-01-16"))
     }
+
+    @Test("Une archive ecrite avant les intercalaires se relit encore")
+    func olderArchiveStillReads() throws {
+        // Les champs ajoutes apres coup sont facultatifs : sans cela, une
+        // sauvegarde faite la semaine derniere deviendrait illisible.
+        let ancienne = """
+        {"version":1,"createdAt":"2026-09-14T10:00:00Z","courses":[],"cards":[],"images":[],
+         "assets":[],"recordings":[],"assignments":[],"seasons":[],"slots":[],
+         "pages":[{"id":"5B2E8F4A-0000-4000-8000-000000000001","title":"Vieille page",
+                   "titleWasEdited":false,"position":0,"templateRaw":"ruled",
+                   "createdAt":"2026-09-14T10:00:00Z","writingSeconds":0,"markdown":"",
+                   "recognizedText":""}]}
+        """
+        let archive = try Backup.decode(Data(ancienne.utf8))
+        #expect(archive.pages.first?.title == "Vieille page")
+        #expect(archive.pages.first?.tagToken == nil)
+        #expect((archive.texts ?? []).isEmpty)
+    }
 }

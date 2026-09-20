@@ -460,6 +460,14 @@ pas un oubli.
 - Pas de génération de cartes en masse depuis un PDF, ni de résumé automatique de cours.
 - Pas de réécriture des notes de l'étudiant, jamais — abréviations comprises.
 - Pas de dossiers, de tags ni d'arborescence à créer à la main : l'emploi du temps range.
+  **Précision du 21 septembre 2026.** Cette règle vise le rangement par *matière*,
+  celui qu'on n'a plus à faire. Les **intercalaires** d'un cahier — cours, exercice,
+  TD, correction — n'en font pas partie : ils ne rangent pas une page dans une
+  matière, ils disent ce qu'elle est à l'intérieur d'un cahier qui a déjà la sienne.
+  La liste est **fermée** et définie par `PageTag` : on pose un intercalaire, on n'en
+  crée jamais. C'est ce qui sépare un intercalaire d'une arborescence — l'un se
+  choisit, l'autre se construit. Ajouter une entrée à cette liste est une décision de
+  produit, pas un réglage.
 - Pas de nœud verrouillé sur la carte : rien n'interdit de réviser ce qu'on veut.
 - Pas de classement public permanent ; le duel de classe est ponctuel, la salle d'étude anonyme.
 - Aucun achat qui fait progresser plus vite.
