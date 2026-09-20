@@ -227,36 +227,43 @@ final class ReadingScroll: UIScrollView {
         guard let size = page.image?.size, size.width > 0, size.height > 0,
               bounds.width > 0, bounds.height > 0 else { return }
 
-        // La vue d'image garde la taille REELLE de la page ; c'est le zoom qui
-        // la met a l'echelle. Sans cela, le zoom minimum ne veut rien dire.
-        if page.frame.size != size {
-            page.frame = CGRect(origin: .zero, size: size)
-            contentSize = size
-        }
-
-        // On peut dezoomer jusqu'a voir la page ENTIERE. C'est ce qui manquait :
-        // le minimum etait fige a un, donc on ne descendait jamais sous la
-        // pleine largeur.
+        // On peut dezoomer jusqu'a voir la page ENTIERE, et zoomer jusqu'a six
+        // fois la taille de lecture. Ces bornes dependent du cadre, donc elles
+        // se recalculent a chaque mise en page.
         let whole = min(bounds.width / size.width, bounds.height / size.height)
         minimumZoomScale = whole
-        maximumZoomScale = max(fitWidth * 6, whole * 6)
+        maximumZoomScale = max(fitWidth, whole) * 6
 
         if needsFraming {
+            // La TAILLE de la page ne se pose qu'une fois, a l'arrivee d'une
+            // nouvelle image.
             needsFraming = false
+            page.transform = .identity
+            page.frame = CGRect(origin: .zero, size: size)
+            contentSize = size
             setZoomScale(fitWidth, animated: false)
-        } else {
-            // Le volet a change de largeur : on reste dans les bornes.
+        } else if zoomScale < minimumZoomScale || zoomScale > maximumZoomScale {
             setZoomScale(min(max(zoomScale, minimumZoomScale), maximumZoomScale), animated: false)
         }
+        // SURTOUT NE PAS reposer `page.frame` ici. Un UIScrollView zoome en
+        // TRANSFORMANT la vue qu'il agrandit : son cadre change donc a chaque
+        // pincement. Le comparer a la taille de la page et le reaffecter
+        // annulait le zoom dans la foulee — plus rien ne bougeait.
         centre()
     }
 
     /// Une page plus petite que le cadre se pose au milieu, pas en haut a
     /// gauche.
+    ///
+    /// `contentSize` porte DEJA la taille zoomee — le multiplier par l'echelle
+    /// la comptait deux fois, et la page fuyait hors du cadre en zoomant.
     func centre() {
-        let extraX = max(0, (bounds.width - contentSize.width * zoomScale) / 2)
-        let extraY = max(0, (bounds.height - contentSize.height * zoomScale) / 2)
-        contentInset = UIEdgeInsets(top: extraY, left: extraX, bottom: extraY, right: extraX)
+        let extraX = max(0, (bounds.width - contentSize.width) / 2)
+        let extraY = max(0, (bounds.height - contentSize.height) / 2)
+        let wanted = UIEdgeInsets(top: extraY, left: extraX, bottom: extraY, right: extraX)
+        // Reaffecter une marge identique relance une mise en page : on evite
+        // la boucle.
+        if contentInset != wanted { contentInset = wanted }
     }
 }
 #endif
