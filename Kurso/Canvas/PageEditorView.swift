@@ -70,6 +70,10 @@ struct PageEditorView: View {
     @State private var isTakingPhoto = false
     /// Le bloc de texte qui vient d'etre cree et attend le clavier.
     @State private var textFocusRequest: UUID?
+    /// La page qu'on lit a cote, et la largeur de son volet.
+    @State private var sidePage: Page?
+    @State private var isChoosingSide = false
+    @AppStorage("volet.largeur") private var sideWidth: Double = 380
     @State private var recorder = LectureRecorder()
     /// Les traits horodates de l'enregistrement en cours.
     @State private var marks: [StrokeTimestamp] = []
@@ -221,27 +225,7 @@ struct PageEditorView: View {
                 }
             }
             .animation(.snappy(duration: 0.18), value: isDropTargeted)
-            // Le bouton vit AU BORD du volet, pas dans l'en-tete : on y va
-            // avec le pouce, sans traverser l'ecran.
-            Button { marginShown.toggle() } label: {
-                ChevronGlyph()
-                    .stroke(K.ink, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
-                    .frame(width: 9, height: 9)
-                    .rotationEffect(.degrees(marginShown ? 180 : 0))
-                    .frame(width: 26, height: 44)
-                    .background(K.paperAlt)
-                    .overlay(alignment: .leading) {
-                        Rectangle().fill(K.ink.opacity(0.12)).frame(width: 1)
-                    }
-            }
-            .buttonStyle(.plain)
-            .frame(maxHeight: .infinity, alignment: .top)
-            .accessibilityLabel(marginShown ? "Cacher les cartes" : "Montrer les cartes")
-
-            if marginShown {
-                TaskMargin(page: page)
-                    .transition(.move(edge: .trailing))
-            }
+            rightSide
             }
             #else
             // Sur Mac : le manuscrit se relit, le markdown s'ecrit. PKCanvasView
@@ -313,6 +297,17 @@ struct PageEditorView: View {
                     print("[KURSO] depot a \(point) → fraction \(String(describing: pageFraction(of: point)))")
                 }
             }
+            // Ouvre le volet de lecture sur une autre page du cahier.
+            if ProcessInfo.processInfo.arguments.contains("-openSidePane") {
+                try? await Task.sleep(for: .seconds(2))
+                let voisines = (page.course?.pages ?? [])
+                    .filter { $0.id != page.id }
+                    .sorted { $0.position < $1.position }
+                if let lue = voisines.first {
+                    marginShown = false
+                    sidePage = lue
+                }
+            }
             if ProcessInfo.processInfo.arguments.contains("-simulateProposeCards") {
                 try? await Task.sleep(for: .seconds(4))
                 print("[KURSO] propositions=\(cardProposals.count)")
@@ -351,6 +346,21 @@ struct PageEditorView: View {
                       selection: $pickedPhoto, matching: .images)
         // Plein ecran : un appareil photo dans une petite feuille ne sert a
         // rien, on ne voit pas ce qu'on cadre.
+        .sheet(isPresented: $isChoosingSide) {
+            SidePagePicker(
+                preferred: page.course,
+                excluding: page.id,
+                onPick: { chosen in
+                    isChoosingSide = false
+                    // Les deux volets ne tiennent pas cote a cote : celui des
+                    // cartes s'efface, et revient quand on ferme la lecture.
+                    marginShown = false
+                    sidePage = chosen
+                },
+                onCancel: { isChoosingSide = false }
+            )
+            .macSheet(760, 620)
+        }
         .fullScreenCover(isPresented: $isTakingPhoto) {
             CameraPicker(
                 onCapture: { image in
@@ -389,6 +399,7 @@ struct PageEditorView: View {
         }
         #endif
         .animation(.snappy(duration: 0.28), value: marginShown)
+        .animation(.snappy(duration: 0.28), value: sidePage?.id)
         #if os(iOS)
         .onChange(of: pickedPhoto) { _, item in
             guard let item else { return }
@@ -864,6 +875,9 @@ struct PageEditorView: View {
                 Button("Prendre une photo") { isTakingPhoto = true }
             }
             Button("Ajouter du texte") { addTextBlock() }
+            Button(sidePage == nil ? "Ouvrir une page à côté…" : "Fermer le volet") {
+                if sidePage == nil { isChoosingSide = true } else { sidePage = nil }
+            }
             Menu("Intercalaire") {
                 ForEach(PageTag.allCases, id: \.self) { tag in
                     Button(tag.label) {
@@ -943,6 +957,48 @@ struct PageEditorView: View {
     /// Ouvre les propositions. La palette PencilKit reste au-dessus de tout
     /// tant que le canevas garde le premier repondant : elle recouvrait les
     /// boutons de l'ecran des cartes.
+    /// Ce qui occupe la droite : la page qu'on lit, ou le volet des cartes.
+    ///
+    /// Sorti du corps parce que le verificateur de types y renoncait — une
+    /// vue de mille lignes finit par depasser ce qu'il sait resoudre.
+    @ViewBuilder
+    private var rightSide: some View {
+        if let reading = sidePage {
+            SidePane(
+                page: reading,
+                // `@AppStorage` ne retient que des Double : la largeur est
+                // convertie ici plutot que de trainer deux types dans le volet.
+                width: Binding(get: { CGFloat(sideWidth) },
+                               set: { sideWidth = Double($0) }),
+                onChoose: { isChoosingSide = true },
+                onClose: { sidePage = nil }
+            )
+            .transition(.move(edge: .trailing))
+        } else {
+            // Le bouton vit AU BORD du volet, pas dans l'en-tete : on y va
+            // avec le pouce, sans traverser l'ecran.
+            Button { marginShown.toggle() } label: {
+                ChevronGlyph()
+                    .stroke(K.ink, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                    .frame(width: 9, height: 9)
+                    .rotationEffect(.degrees(marginShown ? 180 : 0))
+                    .frame(width: 26, height: 44)
+                    .background(K.paperAlt)
+                    .overlay(alignment: .leading) {
+                        Rectangle().fill(K.ink.opacity(0.12)).frame(width: 1)
+                    }
+            }
+            .buttonStyle(.plain)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .accessibilityLabel(marginShown ? "Cacher les cartes" : "Montrer les cartes")
+
+            if marginShown {
+                TaskMargin(page: page)
+                    .transition(.move(edge: .trailing))
+            }
+        }
+    }
+
     /// Rend l'ecriture au canevas, si rien d'autre ne la reclame.
     private func resumeWriting() {
         #if os(iOS)

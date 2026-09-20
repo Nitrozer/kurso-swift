@@ -34,12 +34,14 @@ enum PageExporter {
     /// differents pour la meme page finiraient par diverger, et l'apercu
     /// mentirait sur ce que la page contient.
     @MainActor
-    static func image(_ page: Page, width: CGFloat) -> UIImage? {
+    static func image(_ page: Page, width: CGFloat, density: CGFloat = 2) -> UIImage? {
         let bounds = trimmed(page)
         guard bounds.width > 0, bounds.height > 0, width > 0 else { return nil }
         let ratio = width / bounds.width
         let format = UIGraphicsImageRendererFormat()
-        format.scale = 2
+        // Une vignette veut de la finesse, une page entiere veut tenir en
+        // memoire : a pleine largeur, doubler la densite quadruple le poids.
+        format.scale = density
         format.opaque = true
         let size = CGSize(width: width, height: bounds.height * ratio)
         return UIGraphicsImageRenderer(size: size, format: format).image { context in
