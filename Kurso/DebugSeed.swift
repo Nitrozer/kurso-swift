@@ -161,6 +161,15 @@ enum DebugSeed {
         placedImage.height = 0.6 * (400.0 / 600.0) * (1_240.0 / 3_000.0)
         placedImage.page = justFinished
         context.insert(placedImage)
+
+        // Un bloc de texte tape, pour voir la couche du clavier.
+        let typed = PageText(plain: "Critère de Routh-Hurwitz\nTous les coefficients de la 1re colonne de même signe.")
+        typed.x = 0.09
+        typed.y = 0.055
+        typed.width = 0.55
+        typed.height = 0.028
+        typed.page = page
+        context.insert(typed)
         #endif
 
         let player = PlayerState()

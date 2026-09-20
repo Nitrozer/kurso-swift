@@ -68,6 +68,8 @@ struct PageEditorView: View {
     @State private var isPickingPhoto = false
     /// L'appareil photo est ouvert.
     @State private var isTakingPhoto = false
+    /// Le bloc de texte qui vient d'etre cree et attend le clavier.
+    @State private var textFocusRequest: UUID?
     @State private var recorder = LectureRecorder()
     /// Les traits horodates de l'enregistrement en cours.
     @State private var marks: [StrokeTimestamp] = []
@@ -165,6 +167,7 @@ struct PageEditorView: View {
                     )
                 }
                 imagesLayer
+                textsLayer
                 if isListening {
                     ListeningLayer(
                         marks: listeningMarks,
@@ -633,6 +636,55 @@ struct PageEditorView: View {
     }
 
     /// Les images posees : zones sensibles seulement, le dessin vient du fond.
+    @ViewBuilder private var textsLayer: some View {
+        if !(page.texts ?? []).isEmpty {
+            TextBlocksLayer(
+                items: (page.texts ?? []).sorted { $0.order < $1.order },
+                viewport: viewport,
+                focusRequest: textFocusRequest,
+                onMove: { item, box in
+                    item.rect = box
+                    try? context.save()
+                },
+                onEdit: { item, rtf, plain, height in
+                    item.rtf = rtf
+                    item.plain = plain
+                    item.height = height
+                    try? context.save()
+                },
+                onDelete: { item in
+                    textFocusRequest = nil
+                    context.delete(item)
+                    try? context.save()
+                    resumeWriting()
+                },
+                onDoneEditing: {
+                    textFocusRequest = nil
+                    resumeWriting()
+                }
+            )
+        }
+    }
+
+    /// Pose un bloc de texte au milieu de ce qu'on regarde, pas en haut de
+    /// page : sur une page de trois mille points, « en haut » peut etre tres
+    /// loin de l'ecran.
+    private func addTextBlock() {
+        let zoom = max(viewport.zoom, 0.01)
+        let centreX = (viewport.offset.x + viewport.size.width / 2) / zoom / DrawingCanvas.pageWidth
+        let centreY = (viewport.offset.y + viewport.size.height / 2) / zoom / DrawingCanvas.pageHeight
+        let made = PageText()
+        made.width = 0.6
+        made.height = 0.02
+        made.x = min(max(centreX - made.width / 2, 0.02), 0.98 - made.width)
+        made.y = min(max(centreY - made.height / 2, 0.02), 0.98 - made.height)
+        made.order = Double((page.texts ?? []).count)
+        made.page = page
+        context.insert(made)
+        try? context.save()
+        textFocusRequest = made.id
+    }
+
     @ViewBuilder private var imagesLayer: some View {
         if !(page.images ?? []).isEmpty {
             PlacedImagesLayer(
@@ -807,6 +859,7 @@ struct PageEditorView: View {
             if CameraPicker.isAvailable {
                 Button("Prendre une photo") { isTakingPhoto = true }
             }
+            Button("Ajouter du texte") { addTextBlock() }
             if hasBackdrop {
                 Button(isCapturingRegion ? "Annuler la capture" : "Capturer un morceau") {
                     isCapturingRegion.toggle()

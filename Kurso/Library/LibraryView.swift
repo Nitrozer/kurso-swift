@@ -978,6 +978,15 @@ struct LibraryView: View {
             let searchable = Abbreviations.searchableText(page.recognizedText)
             let matchesPage = !TextSearch.rank([page], query: query) { _ in searchable }.isEmpty
 
+            // Les blocs tapes au clavier se cherchent comme le reste : ils
+            // portent souvent la definition qu'on recopie d'un poly, donc
+            // exactement ce qu'on revient chercher.
+            for block in (page.texts ?? []).sorted(by: { $0.order < $1.order }) {
+                if let excerpt = TextSearch.excerpt(from: block.plain, query: query) {
+                    rows.append(SearchRow(id: block.id, page: page, kind: .typed, excerpt: excerpt))
+                }
+            }
+
             if !page.markdown.isEmpty,
                let excerpt = TextSearch.excerpt(from: page.markdown, query: query) {
                 rows.append(SearchRow(id: page.id, page: page, kind: .typed, excerpt: excerpt))

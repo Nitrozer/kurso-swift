@@ -13,7 +13,7 @@ enum KursoStore {
         League.self, LeagueMember.self, Assignment.self, GlossaryTerm.self,
         Abbreviation.self, AudioRecording.self, Quest.self, PlayerState.self,
         Timetable.self, TimeSlot.self, MarkerFeedback.self, PDFAsset.self, DailyActivity.self,
-        PageImage.self, ExamSnapshot.self, ExamPaper.self,
+        PageImage.self, PageText.self, ExamSnapshot.self, ExamPaper.self,
         Friend.self, ClassGroup.self, FriendRequest.self, NoteAsk.self, DismissedSlot.self,
     ])
 

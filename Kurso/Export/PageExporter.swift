@@ -1,6 +1,8 @@
 #if os(iOS)
+import SwiftUI
 import UIKit
 import PencilKit
+import KursoCore
 import KursoModels
 
 /// Export de pages en PDF.
@@ -46,6 +48,11 @@ enum PageExporter {
            let drawing = try? PKDrawing(data: data),
            !drawing.strokes.isEmpty {
             used = max(used, drawing.bounds.maxY + 160)
+        }
+        // Une image ou un bloc de texte pose tout en bas doit tenir dans la
+        // page exportee, meme si rien n'est ecrit a cette hauteur.
+        for box in (page.images ?? []).map(\.rect) + (page.texts ?? []).map(\.rect) {
+            used = max(used, placement(of: box).maxY + 80)
         }
         return CGRect(x: 0, y: 0, width: width, height: min(used, PaperBackdrop.pageHeight))
     }
@@ -112,6 +119,44 @@ enum PageExporter {
            !drawing.strokes.isEmpty {
             drawing.image(from: bounds, scale: 2).draw(in: bounds)
         }
+
+        // Ce qu'on a pose PAR-DESSUS le trace : images deplacees, blocs de
+        // texte tapes. Ils manquaient a l'export — une page exportee perdait
+        // en silence tout ce qui n'etait pas ecrit au stylet.
+        for item in (page.images ?? []).sorted(by: { $0.order < $1.order }) {
+            guard let data = item.data, let image = UIImage(data: data) else { continue }
+            image.draw(in: placement(of: item.rect))
+        }
+        for item in (page.texts ?? []).sorted(by: { $0.order < $1.order }) {
+            text(of: item)?.draw(in: placement(of: item.rect))
+        }
+    }
+
+    /// Un cadre en fractions de page redevient des points.
+    ///
+    /// Toujours rapporte a la page ENTIERE, jamais au cadre rogne : c'est
+    /// ainsi que les fractions ont ete enregistrees, et une image calee sur
+    /// un cadre plus court remonterait vers le haut.
+    private static func placement(of box: CGRect) -> CGRect {
+        CGRect(x: box.minX * PaperBackdrop.pageWidth,
+               y: box.minY * PaperBackdrop.pageHeight,
+               width: box.width * PaperBackdrop.pageWidth,
+               height: box.height * PaperBackdrop.pageHeight)
+    }
+
+    private static func text(of item: PageText) -> NSAttributedString? {
+        if let rtf = item.rtf,
+           let attributed = try? NSAttributedString(
+                data: rtf,
+                options: [.documentType: NSAttributedString.DocumentType.rtf],
+                documentAttributes: nil) {
+            return attributed
+        }
+        guard !item.plain.isEmpty else { return nil }
+        return NSAttributedString(string: item.plain, attributes: [
+            .font: UIFont(name: "Nunito-SemiBold", size: 17) ?? .systemFont(ofSize: 17),
+            .foregroundColor: UIColor(Color(token: DesignTokens.Palette.ink)),
+        ])
     }
 
     @MainActor

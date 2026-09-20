@@ -72,6 +72,10 @@ import SwiftData
     @Relationship(deleteRule: .cascade, inverse: \PageImage.page)
     public var images: [PageImage]? = []
 
+    /// Les blocs de texte tapes au clavier, poses sur la page.
+    @Relationship(deleteRule: .cascade, inverse: \PageText.page)
+    public var texts: [PageText]? = []
+
     public var chapter: Chapter?
 
     /// Lien chronologique = arete de la carte. Relation reflexive : son inverse
