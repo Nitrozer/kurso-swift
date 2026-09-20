@@ -61,7 +61,7 @@ struct TextBlocksLayer: UIViewRepresentable {
             if let wantsFocus = parent.focusRequest, wantsFocus != focused,
                let block = blocks[wantsFocus] {
                 focused = wantsFocus
-                block.textView.becomeFirstResponder()
+                block.beginEditing()
             }
             if parent.focusRequest == nil { focused = nil }
         }
@@ -144,6 +144,14 @@ final class TextBlockView: UIView, UITextViewDelegate {
 
         textView.isScrollEnabled = false
         textView.backgroundColor = .clear
+        // AU REPOS, LE BLOC EST UN OBJET.
+        //
+        // Une zone de saisie active porte ses propres gestes — loupe,
+        // selection, appui long — et ils passaient AVANT le notre : le bloc
+        // ne se deplacait jamais. Elle ne s'active qu'une fois qu'on a tape
+        // dedans, et se rendort quand on en sort.
+        textView.isEditable = false
+        textView.isSelectable = false
         // La mise en forme du systeme : gras, italique, souligne, au clavier
         // comme au menu. On ne reconstruit pas une barre d'outils pour ca.
         textView.allowsEditingTextAttributes = true
@@ -155,6 +163,15 @@ final class TextBlockView: UIView, UITextViewDelegate {
         textView.delegate = self
         addSubview(textView)
 
+        // Un cadre a peine visible : un objet qu'on peut saisir doit se voir,
+        // sinon on ne sait pas qu'il est la ni qu'il se deplace.
+        layer.cornerRadius = 10
+        layer.borderWidth = 1.5
+        layer.borderColor = UIColor(Color(token: DesignTokens.Palette.ink)).withAlphaComponent(0.12).cgColor
+
+        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
+        addGestureRecognizer(tap)
+
         // Appui long pour deplacer : une tape place le curseur, comme partout
         // ailleurs. Un bloc qu'on ne peut pas taper sans le deplacer serait
         // inecrivable.
@@ -164,6 +181,33 @@ final class TextBlockView: UIView, UITextViewDelegate {
     }
 
     required init?(coder: NSCoder) { fatalError("jamais depuis un storyboard") }
+
+    /// Passe en saisie, curseur au plus pres de l'endroit touche.
+    func beginEditing(at point: CGPoint? = nil) {
+        textView.isEditable = true
+        textView.isSelectable = true
+        textView.becomeFirstResponder()
+        if let point,
+           let position = textView.closestPosition(to: point),
+           let range = textView.textRange(from: position, to: position) {
+            textView.selectedTextRange = range
+        }
+        setEditingLook(true)
+    }
+
+    private func setEditingLook(_ editing: Bool) {
+        let ink = UIColor(Color(token: DesignTokens.Palette.ink))
+        let brand = UIColor(Color(token: DesignTokens.Palette.brand))
+        layer.borderColor = editing
+            ? brand.withAlphaComponent(0.55).cgColor
+            : ink.withAlphaComponent(0.12).cgColor
+        layer.borderWidth = editing ? 2 : 1.5
+    }
+
+    @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
+        guard !textView.isEditable else { return }
+        beginEditing(at: gesture.location(in: textView))
+    }
 
     static let bodyFont: UIFont = {
         UIFont(name: "Nunito-SemiBold", size: 17) ?? .systemFont(ofSize: 17, weight: .medium)
@@ -248,6 +292,10 @@ final class TextBlockView: UIView, UITextViewDelegate {
     }
 
     func textViewDidEndEditing(_ textView: UITextView) {
+        // On se rendort : sinon le bloc reste insaisissable pour toujours.
+        textView.isEditable = false
+        textView.isSelectable = false
+        setEditingLook(false)
         let trimmed = textView.text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             onEmptied?()
