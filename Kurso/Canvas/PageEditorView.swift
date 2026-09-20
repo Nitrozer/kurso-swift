@@ -399,8 +399,9 @@ struct PageEditorView: View {
         }
         #endif
         .animation(.snappy(duration: 0.28), value: marginShown)
-        .animation(.snappy(duration: 0.28), value: sidePage?.id)
         #if os(iOS)
+        // `sidePage` n'existe que sur iOS : le volet de lecture aussi.
+        .animation(.snappy(duration: 0.28), value: sidePage?.id)
         .onChange(of: pickedPhoto) { _, item in
             guard let item else { return }
             let purpose = photoPurpose
