@@ -122,6 +122,21 @@ struct DrawingCanvas: UIViewRepresentable {
 
         handle?.canvas = canvas
         context.coordinator.attachToolPicker(to: canvas, handle: handle)
+
+        // Deux doigts, deux tapes : on bascule sur la gomme, et on revient a
+        // l'outil d'avant. C'est le geste de GoodNotes, celui qu'on a dans les
+        // doigts — sans traverser l'ecran jusqu'a la palette.
+        //
+        // `cancelsTouchesInView` a faux : le defilement et le zoom du canevas
+        // ne doivent rien perdre a cause de nous.
+        let toggle = UITapGestureRecognizer(target: context.coordinator,
+                                            action: #selector(Coordinator.toggleEraser))
+        toggle.numberOfTouchesRequired = 2
+        toggle.numberOfTapsRequired = 2
+        toggle.cancelsTouchesInView = false
+        toggle.delaysTouchesBegan = false
+        toggle.delaysTouchesEnded = false
+        canvas.addGestureRecognizer(toggle)
         // En dernier : brancher le delegue avant d'avoir pose le trace initial
         // faisait passer ce trace pour une modification de l'utilisateur.
         canvas.delegate = context.coordinator
@@ -135,6 +150,15 @@ struct DrawingCanvas: UIViewRepresentable {
                 canvas.setZoomScale(CGFloat(scale), animated: false)
                 coordinator.report(canvas)
                 print("[KURSO] zoom=\(canvas.zoomScale) contenu=\(canvas.contentSize)")
+            }
+        }
+
+        // Rejoue la bascule a deux doigts, qu'aucun geste simule ne peut
+        // declencher : on verifie que la palette suit.
+        if ProcessInfo.processInfo.arguments.contains("-simulateEraserToggle") {
+            let coordinator = context.coordinator
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+                coordinator.toggleEraser()
             }
         }
 
@@ -193,9 +217,14 @@ struct DrawingCanvas: UIViewRepresentable {
     }
     #endif
 
-    final class Coordinator: NSObject, PKCanvasViewDelegate {
+    final class Coordinator: NSObject, PKCanvasViewDelegate, PKToolPickerObserver {
         fileprivate var parent: DrawingCanvas
         private var toolPicker: PKToolPicker?
+        private weak var canvas: PKCanvasView?
+        /// Le dernier outil qui n'etait pas une gomme. C'est lui qu'on rend
+        /// quand on rebascule : revenir sur un stylo noir alors qu'on ecrivait
+        /// au surligneur jaune serait une perte, pas un raccourci.
+        private var lastInkTool: PKTool?
         private(set) var isWriting = false
         private var lastReported: PaperBackdrop.Viewport?
 
@@ -206,8 +235,36 @@ struct DrawingCanvas: UIViewRepresentable {
             picker.setVisible(true, forFirstResponder: canvas)
             picker.addObserver(canvas)
             canvas.becomeFirstResponder()
+            picker.addObserver(self)
             toolPicker = picker
+            self.canvas = canvas
+            lastInkTool = picker.selectedTool
             handle?.toolPicker = picker
+        }
+
+        /// La palette a change d'outil. On ne retient que ce qui ecrit.
+        func toolPickerSelectedToolDidChange(_ toolPicker: PKToolPicker) {
+            guard !(toolPicker.selectedTool is PKEraserTool) else { return }
+            lastInkTool = toolPicker.selectedTool
+        }
+
+        /// Bascule gomme / outil d'ecriture.
+        ///
+        /// On passe par `selectedTool` de la palette, pas par `canvas.tool` :
+        /// sinon le canevas efface pendant que la palette montre encore un
+        /// stylo, et on ne sait plus ou l'on en est.
+        @objc func toggleEraser() {
+            guard let toolPicker, let canvas else { return }
+            if toolPicker.selectedTool is PKEraserTool {
+                toolPicker.selectedTool = lastInkTool ?? PKInkingTool(.pen, color: .black, width: 4)
+            } else {
+                lastInkTool = toolPicker.selectedTool
+                toolPicker.selectedTool = PKEraserTool(.bitmap)
+            }
+            // Le geste n'a aucun retour visuel immediat si la palette est
+            // rangee : la vibration dit qu'il a ete pris.
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            canvas.becomeFirstResponder()
         }
 
         /// La palette n'appartient qu'a la feuille.
@@ -218,6 +275,7 @@ struct DrawingCanvas: UIViewRepresentable {
         func detachToolPicker(from canvas: PKCanvasView) {
             toolPicker?.setVisible(false, forFirstResponder: canvas)
             toolPicker?.removeObserver(canvas)
+            toolPicker?.removeObserver(self)
             canvas.resignFirstResponder()
             toolPicker = nil
         }
