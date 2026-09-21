@@ -85,6 +85,8 @@ struct LibraryView: View {
                 #if os(iOS)
                 // Les vignettes ont besoin de retrouver le fichier d'un PDF.
                 PDFAssetLookup.remember(assets)
+                // Les PDF poses avant que la recherche sache les lire.
+                SlideText.backfill(context)
                 #endif
                 #if DEBUG
                 // Rejoue un import de PDF, pour voir ce qu'il cree vraiment.
@@ -132,6 +134,34 @@ struct LibraryView: View {
                     } else {
                         print("[EXPORT] echec")
                     }
+                }
+                #endif
+                // Fabrique un PDF au texte connu, l'importe, et relit ce qui
+                // en a ete extrait. C'est le seul moyen de savoir si la
+                // recherche verra vraiment les diapos.
+                #if os(iOS)
+                if ProcessInfo.processInfo.arguments.contains("-simulateSlideText") {
+                    let mots = "Transformée de Laplace et théorème de la valeur finale"
+                    let url = URL(fileURLWithPath: NSTemporaryDirectory() + "Essai diapo.pdf")
+                    let page = CGRect(x: 0, y: 0, width: 595, height: 842)
+                    let data = UIGraphicsPDFRenderer(bounds: page).pdfData { ctx in
+                        ctx.beginPage()
+                        (mots as NSString).draw(
+                            at: CGPoint(x: 48, y: 64),
+                            withAttributes: [.font: UIFont.systemFont(ofSize: 18)])
+                    }
+                    try? data.write(to: url)
+                    let creees = (try? PDFImporter.importFile(
+                        at: url, course: courses.first, context: context)) ?? []
+                    let lu = creees.first?.slideText ?? "(aucune page)"
+                    let rapport = """
+                    pages creees = \(creees.count)
+                    texte lu = \(lu)
+                    contient « Laplace » = \(lu.localizedCaseInsensitiveContains("Laplace"))
+                    extrait = \(TextSearch.excerpt(from: lu, query: "laplace")?.line ?? "(rien)")
+                    """
+                    try? rapport.write(toFile: NSTemporaryDirectory() + "diapo.txt",
+                                       atomically: true, encoding: .utf8)
                 }
                 #endif
                 if ProcessInfo.processInfo.arguments.contains("-simulateImport") {
@@ -988,7 +1018,7 @@ struct LibraryView: View {
     /// chercher dans son ecriture n'a d'interet que si l'on voit OU ca a ete
     /// trouve, et sous quelle forme.
     enum SearchKind: String, CaseIterable, Identifiable {
-        case all, handwritten, typed, photo, cards
+        case all, handwritten, typed, slides, photo, cards
         var id: String { rawValue }
 
         var chip: String {
@@ -996,6 +1026,7 @@ struct LibraryView: View {
             case .all:         "Tout"
             case .handwritten: "Manuscrit"
             case .typed:       "Tapé"
+            case .slides:      "Diapos"
             case .photo:       "Photos du tableau"
             case .cards:       "Cartes"
             }
@@ -1003,6 +1034,7 @@ struct LibraryView: View {
         var badge: String {
             switch self {
             case .typed: "TAPÉ"
+            case .slides: "DIAPO"
             case .photo: "PHOTO"
             case .cards: "CARTE"
             default:     "MANUSCRIT"
@@ -1011,6 +1043,7 @@ struct LibraryView: View {
         var tint: Color {
             switch self {
             case .typed: K.brand
+            case .slides: K.inkSoft
             case .photo: K.eraser
             case .cards: K.success
             default:     K.reward
@@ -1048,8 +1081,16 @@ struct LibraryView: View {
                 rows.append(SearchRow(id: page.id, page: page, kind: .typed, excerpt: excerpt))
             } else if matchesPage,
                       let excerpt = TextSearch.excerpt(from: page.recognizedText, query: query) {
-                let kind: SearchKind = (page.photo != nil || page.pdfAssetID != nil) ? .photo : .handwritten
+                let kind: SearchKind = page.photo != nil ? .photo
+                    : (page.pdfAssetID != nil ? .slides : .handwritten)
                 rows.append(SearchRow(id: page.id, page: page, kind: kind, excerpt: excerpt))
+            }
+
+            // Le texte de la diapo elle-meme. Sans lui, la moitie d'un
+            // semestre — celle qui arrive en PDF — restait introuvable.
+            if !page.slideText.isEmpty,
+               let excerpt = TextSearch.excerpt(from: page.slideText, query: query) {
+                rows.append(SearchRow(id: page.id, page: page, kind: .slides, excerpt: excerpt))
             }
 
             for card in page.cards ?? [] {

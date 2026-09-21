@@ -58,6 +58,17 @@ import SwiftData
     /// Il ne remplace jamais le trace et n'est jamais montre a la place des
     /// notes : le §4 interdit de reecrire ce que l'etudiant a ecrit.
     public var recognizedText: String = ""
+    /// Le texte de la diapo, quand la page en annote une.
+    ///
+    /// Lu dans le PDF, jamais reecrit : la moitie des cours sont des diapos
+    /// (§11), et sans cela la moitie d'un semestre reste invisible a la
+    /// recherche. Distinct de `recognizedText`, qui porte l'ECRITURE relue et
+    /// que la reconnaissance reecrit a chaque trait.
+    public var slideText: String = ""
+    /// Quand la lecture du PDF a ete tentee. Sans cette date, une diapo sans
+    /// aucun texte — une image scannee — serait relue a chaque lancement.
+    public var slideTextAt: Date?
+
     /// Si la page annote un PDF depose.
     public var pdfAssetID: UUID?
     public var pdfPageIndex: Int?

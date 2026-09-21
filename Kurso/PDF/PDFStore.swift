@@ -42,6 +42,15 @@ enum PDFStore {
     ///
     /// CoreGraphics directement plutot qu'un moteur de rendu par plateforme :
     /// le meme code sert sur iPad et sur Mac, sans garde de compilation.
+    /// Le texte d'une diapo, tel que le PDF le porte.
+    ///
+    /// Rend une chaine vide pour une page scannee : il n'y a alors rien a
+    /// lire, et c'est une reponse, pas un echec.
+    static func text(fileName: String, pageIndex: Int) -> String {
+        guard let page = document(fileName: fileName)?.page(at: pageIndex) else { return "" }
+        return (page.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     static func render(fileName: String, pageIndex: Int, width: CGFloat) -> CGImage? {
         render(document: document(fileName: fileName), pageIndex: pageIndex, width: width)
     }

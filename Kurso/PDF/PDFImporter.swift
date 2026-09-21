@@ -47,6 +47,10 @@ enum PDFImporter {
             page.titleWasEdited = true
             page.pdfAssetID = asset.id
             page.pdfPageIndex = index
+            // Le texte de la diapo se lit maintenant, une fois : c'est lui qui
+            // rendra la page trouvable.
+            page.slideText = PDFStore.text(fileName: stored.fileName, pageIndex: index)
+            page.slideTextAt = .now
             page.course = course
             page.position = slots[rank]
             context.insert(page)
