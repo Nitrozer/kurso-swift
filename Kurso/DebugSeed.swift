@@ -174,6 +174,28 @@ enum DebugSeed {
         context.insert(typed)
         #endif
 
+        // Quelques seances reparties sur la semaine : sans elles, la grille
+        // de la semaine n'a qu'une colonne a montrer.
+        let lundi = WeekPlan.days(containing: .now).first ?? .now
+        let semaine: [(Int, Int, Int, String, Course?)] = [
+            (0, 8, 10, "Automatique", course),
+            (1, 14, 17, "Radiocommunications", nil),
+            (2, 10, 12, "Automatique", course),
+            (3, 9, 12, "Traitement du signal", nil),
+            (4, 8, 9, "Anglais", nil),
+        ]
+        for (jour, debut, fin, nom, matiere) in semaine {
+            guard let base = Calendar.current.date(byAdding: .day, value: jour, to: lundi),
+                  let start = Calendar.current.date(bySettingHour: debut, minute: 0, second: 0, of: base),
+                  let end = Calendar.current.date(bySettingHour: fin, minute: 0, second: 0, of: base)
+            else { continue }
+            let seance = TimeSlot(icsUID: "demo-semaine-\(jour)", summary: nom,
+                                  start: start, end: end)
+            seance.location = "Salle \(204 + jour)"
+            seance.course = matiere
+            context.insert(seance)
+        }
+
         let player = PlayerState()
         player.xp = 320
         player.level = 7

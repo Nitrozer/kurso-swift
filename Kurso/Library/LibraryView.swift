@@ -37,6 +37,8 @@ struct LibraryView: View {
     /// La page lue dans le volet de droite. Elle survit au changement de page
     /// ecrite : ce qu'on lit a cote ne depend pas de ce qu'on ecrit.
     @State private var sidePage: Page?
+    /// La semaine, quand on la consulte.
+    @State private var isShowingWeek = false
     /// Change pour demander a la feuille d'ouvrir le selecteur d'image.
     @State private var addImageRequest: UUID?
     @State private var openedCourse: Course?
@@ -164,6 +166,9 @@ struct LibraryView: View {
                                        atomically: true, encoding: .utf8)
                 }
                 #endif
+                if ProcessInfo.processInfo.arguments.contains("-openWeek") {
+                    isShowingWeek = true
+                }
                 if ProcessInfo.processInfo.arguments.contains("-simulateImport") {
                     let source = URL(filePath: "/tmp/Cours de maths.pdf")
                     let created = try? PDFImporter.importFile(
@@ -440,6 +445,15 @@ struct LibraryView: View {
         .sheet(isPresented: $isImporting) {
             TimetableOnboardingView().macSheet(760, 640)
         }
+        #if os(iOS)
+        .fullScreenCover(isPresented: $isShowingWeek) {
+            WeekView { isShowingWeek = false }
+        }
+        #else
+        .sheet(isPresented: $isShowingWeek) {
+            WeekView { isShowingWeek = false }.macSheet(1_000, 700)
+        }
+        #endif
         #if os(iOS)
         .sheet(item: $exported) { ShareSheet(url: $0.url) }
         .photosPicker(isPresented: Binding(
@@ -989,9 +1003,11 @@ struct LibraryView: View {
         .buttonStyle(.plain)
     }
 
-    /// Ouvre l'emploi du temps : import la premiere fois, consultation ensuite.
+    /// Ouvre l'emploi du temps : import la premiere fois, consultation
+    /// ensuite. Le commentaire disait deja « consultation » ; il n'y avait
+    /// rien a consulter, le bouton rouvrait l'import.
     private var importButton: some View {
-        Button { isImporting = true } label: {
+        Button { if slots.isEmpty { isImporting = true } else { isShowingWeek = true } } label: {
             HStack(spacing: 7) {
                 if slots.isEmpty { Glyph(kind: .plus, size: 12) }
                 Text(slots.isEmpty ? "Importer l'emploi du temps" : "Emploi du temps")
