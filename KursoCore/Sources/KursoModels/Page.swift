@@ -92,6 +92,10 @@ import SwiftData
     @Relationship(deleteRule: .cascade, inverse: \PageText.page)
     public var texts: [PageText]? = []
 
+    /// Quelques etats anterieurs du trace, pour revenir en arriere apres coup.
+    @Relationship(deleteRule: .cascade, inverse: \PageSnapshot.page)
+    public var snapshots: [PageSnapshot]? = []
+
     public var chapter: Chapter?
 
     /// Lien chronologique = arete de la carte. Relation reflexive : son inverse

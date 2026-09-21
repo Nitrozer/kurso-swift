@@ -15,6 +15,7 @@ enum KursoStore {
         Timetable.self, TimeSlot.self, MarkerFeedback.self, PDFAsset.self, DailyActivity.self,
         PageImage.self, PageText.self, ExamSnapshot.self, ExamPaper.self,
         Friend.self, ClassGroup.self, FriendRequest.self, NoteAsk.self, DismissedSlot.self,
+        PageSnapshot.self,
     ])
 
     /// `cloudKitDatabase` reste desactive tant que le compte developpeur n'est

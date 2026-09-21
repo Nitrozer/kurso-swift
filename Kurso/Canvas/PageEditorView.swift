@@ -77,6 +77,12 @@ struct PageEditorView: View {
     /// Le bloc de texte qui vient d'etre cree et attend le clavier.
     @State private var textFocusRequest: UUID?
     @State private var isChoosingSide = false
+    /// L'historique de la page, quand on le consulte.
+    @State private var isLookingBack = false
+    /// Change pour reconstruire le canevas : c'est la seule facon de lui
+    /// imposer un trace de l'exterieur sans rouvrir la course que la
+    /// reinjection permanente avait ouverte.
+    @State private var canvasToken = UUID()
     /// Zero : pas encore reglee. On propose alors la moitie de la place.
     @AppStorage("volet.largeur") private var sideWidth: Double = 0
     /// La largeur du canevas et du volet reunis, mesuree.
@@ -162,6 +168,7 @@ struct PageEditorView: View {
                     persist(latest)
                 }
             )
+                .id(canvasToken)
                 if isMasking, let index = page.pdfPageIndex {
                     OcclusionLayer(
                         page: page,
@@ -316,6 +323,39 @@ struct PageEditorView: View {
                     print("[KURSO] depot a \(point) → fraction \(String(describing: pageFraction(of: point)))")
                 }
             }
+            // Ecrire, effacer, revenir en arriere : la boucle entiere.
+            if ProcessInfo.processInfo.arguments.contains("-simulateHistory") {
+                try? await Task.sleep(for: .seconds(2))
+                let maintenant = Date()
+                func trace(_ combien: Int) -> Data {
+                    PKDrawing(strokes: (0..<combien).map {
+                        DrawingCanvas.debugStroke(atY: 300 + CGFloat($0) * 60)
+                    }).dataRepresentation()
+                }
+                // Il y a quarante minutes : trois traits.
+                page.drawing = trace(3)
+                PageHistoryStore.keepIfNeeded(page, strokes: 3, drawing: page.drawing,
+                                              now: maintenant.addingTimeInterval(-2_400),
+                                              context: context)
+                // Maintenant : on a tout efface sauf un.
+                page.drawing = trace(1)
+                PageHistoryStore.keepIfNeeded(page, strokes: 1, drawing: page.drawing,
+                                              now: maintenant, context: context)
+                let gardes = (page.snapshots ?? []).sorted { $0.takenAt < $1.takenAt }
+                var rapport = "instantanes = \(gardes.count) · traits = \(gardes.map(\.strokeCount))\n"
+                if let ancien = gardes.first {
+                    let rendu = PageHistoryStore.restore(ancien, into: page, context: context)
+                    let surLaPage = (page.drawing.flatMap { try? PKDrawing(data: $0) })?.strokes.count ?? -1
+                    rapport += "restaure = \(rendu.strokes.count) traits · sur la page = \(surLaPage)\n"
+                    rapport += "apres restauration, instantanes = \((page.snapshots ?? []).count)\n"
+                    rapport += "l'etat d'avant la restauration est garde = \((page.snapshots ?? []).contains { $0.strokeCount == 1 })"
+                }
+                try? rapport.write(toFile: NSTemporaryDirectory() + "historique.txt",
+                                   atomically: true, encoding: .utf8)
+                if ProcessInfo.processInfo.arguments.contains("-openHistory") {
+                    isLookingBack = true
+                }
+            }
             if ProcessInfo.processInfo.arguments.contains("-openSidePicker") {
                 try? await Task.sleep(for: .seconds(2))
                 isChoosingSide = true
@@ -366,6 +406,21 @@ struct PageEditorView: View {
                       selection: $pickedPhoto, matching: .images)
         // Plein ecran : un appareil photo dans une petite feuille ne sert a
         // rien, on ne voit pas ce qu'on cadre.
+        .sheet(isPresented: $isLookingBack) {
+            PageHistorySheet(
+                page: page,
+                onRestore: { snapshot in
+                    isLookingBack = false
+                    let restored = PageHistoryStore.restore(snapshot, into: page, context: context)
+                    drawing = restored
+                    // Le canevas fait foi tant qu'une page est ouverte : pour
+                    // lui imposer autre chose, on le reconstruit.
+                    canvasToken = UUID()
+                },
+                onClose: { isLookingBack = false }
+            )
+            .macSheet(720, 620)
+        }
         .sheet(isPresented: $isChoosingSide) {
             SidePagePicker(
                 preferred: page.course,
@@ -899,6 +954,7 @@ struct PageEditorView: View {
                 Button("Prendre une photo") { isTakingPhoto = true }
             }
             Button("Ajouter du texte") { addTextBlock() }
+            Button("Revenir en arrière…") { isLookingBack = true }
             Button(sidePage == nil ? "Ouvrir une page à côté…" : "Fermer le volet") {
                 if sidePage == nil { isChoosingSide = true } else { sidePage = nil }
             }
@@ -1031,7 +1087,8 @@ struct PageEditorView: View {
     /// l'ecran, et la palette PencilKit s'en va avec.
     private var wantsWriting: Bool {
         !isCoveredBySheet && !titleFocused && !isMasking
-            && !isChoosingSide && !isTakingPhoto && scenePhase == .active
+            && !isChoosingSide && !isTakingPhoto && !isLookingBack
+            && scenePhase == .active
     }
 
     /// Rend l'ecriture au canevas, si rien d'autre ne la reclame.
@@ -1377,6 +1434,12 @@ struct PageEditorView: View {
         }
         #if DEBUG
         print("[KURSO] persist traits=\(toSave.strokes.count) octets=\(page.drawing?.count ?? 0) source=\(source)")
+        #endif
+        #if os(iOS)
+        // Le filet : quelques etats anterieurs du trace, au plus un toutes
+        // les vingt minutes.
+        PageHistoryStore.keepIfNeeded(page, strokes: toSave.strokes.count,
+                                      drawing: page.drawing, context: context)
         #endif
         scheduleRecognition(toSave)
     }
