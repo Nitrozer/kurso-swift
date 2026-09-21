@@ -61,6 +61,17 @@ enum DebugSeed {
         later.course = course
         context.insert(later)
 
+        // Quelques signets, poses a des heures differentes : de quoi voir les
+        // onglets sur la page ET le regroupement par jour dans la liste.
+        for (height, note, hoursAgo) in [(0.18, "il insiste sur le signe", 2.0),
+                                         (0.52, "", 3.0),
+                                         (0.81, "tombe a l'examen", 26.0)] {
+            let mark = PageBookmark(height: height, note: note,
+                                    createdAt: Date().addingTimeInterval(-hoursAgo * 3600))
+            mark.page = page
+            context.insert(mark)
+        }
+
         let activity = DailyActivity(day: Calendar.current.startOfDay(for: .now))
         activity.cardsReviewed = 3
         activity.cardsCaptured = 1

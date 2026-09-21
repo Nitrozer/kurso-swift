@@ -55,6 +55,10 @@ enum BackupStore {
                       x: block.x, y: block.y, width: block.width, height: block.height,
                       order: block.order, pageID: block.page?.id)
             },
+            bookmarks: all(PageBookmark.self).map { mark in
+                .init(id: mark.id, createdAt: mark.createdAt, height: mark.height,
+                      note: mark.note, pageID: mark.page?.id)
+            },
             assets: all(PDFAsset.self).map { asset in
                 .init(id: asset.id, fileName: asset.fileName, title: asset.title,
                       pageCount: asset.pageCount, importedAt: asset.importedAt,
@@ -195,6 +199,13 @@ enum BackupStore {
             block.order = row.order
             block.page = row.pageID.flatMap { pages[$0] }
             context.insert(block)
+        }
+
+        for row in archive.bookmarks ?? [] {
+            let mark = PageBookmark(height: row.height, note: row.note, createdAt: row.createdAt)
+            mark.id = row.id
+            mark.page = row.pageID.flatMap { pages[$0] }
+            context.insert(mark)
         }
 
         for row in archive.images {

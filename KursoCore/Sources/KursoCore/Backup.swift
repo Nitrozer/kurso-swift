@@ -27,6 +27,8 @@ public enum Backup {
         /// d'un tableau non optionnel, meme avec une valeur par defaut — une
         /// archive ecrite avant les blocs de texte deviendrait illisible.
         public var texts: [TextRow]?
+        /// FACULTATIF pour la meme raison que `texts`.
+        public var bookmarks: [BookmarkRow]?
         public var assets: [AssetRow]
         public var recordings: [RecordingRow]
         public var assignments: [AssignmentRow]
@@ -39,6 +41,7 @@ public enum Backup {
             createdAt: Date = .now,
             courses: [CourseRow] = [], pages: [PageRow] = [], cards: [CardRow] = [],
             images: [ImageRow] = [], texts: [TextRow]? = nil,
+            bookmarks: [BookmarkRow]? = nil,
             assets: [AssetRow] = [], recordings: [RecordingRow] = [],
             assignments: [AssignmentRow] = [], seasons: [SeasonRow] = [], slots: [SlotRow] = [],
             player: PlayerRow? = nil
@@ -50,6 +53,7 @@ public enum Backup {
             self.cards = cards
             self.images = images
             self.texts = texts
+            self.bookmarks = bookmarks
             self.assets = assets
             self.recordings = recordings
             self.assignments = assignments
@@ -148,6 +152,15 @@ public enum Backup {
             self.id = id; self.rtf = rtf; self.plain = plain
             self.x = x; self.y = y; self.width = width; self.height = height
             self.order = order; self.pageID = pageID
+        }
+    }
+
+    /// Un signet pose pendant le cours.
+    public struct BookmarkRow: Codable, Equatable, Sendable {
+        public var id: UUID, createdAt: Date, height: Double, note: String, pageID: UUID?
+        public init(id: UUID, createdAt: Date, height: Double, note: String, pageID: UUID?) {
+            self.id = id; self.createdAt = createdAt; self.height = height
+            self.note = note; self.pageID = pageID
         }
     }
 

@@ -96,6 +96,10 @@ import SwiftData
     @Relationship(deleteRule: .cascade, inverse: \PageSnapshot.page)
     public var snapshots: [PageSnapshot]? = []
 
+    /// Ce qu'on a marque au vol pendant le cours.
+    @Relationship(deleteRule: .cascade, inverse: \PageBookmark.page)
+    public var bookmarks: [PageBookmark]? = []
+
     public var chapter: Chapter?
 
     /// Lien chronologique = arete de la carte. Relation reflexive : son inverse

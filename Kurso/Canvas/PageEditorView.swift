@@ -21,6 +21,8 @@ struct PageEditorView: View {
     var onOpenSlide: (Page) -> Void = { _ in }
     /// Demande venue du panneau : ouvrir le selecteur d'image.
     var addImageRequest: UUID?
+    /// Une hauteur de page a rejoindre a l'ouverture : on arrive d'un signet.
+    var openAtHeight: Double?
     /// Demander des cartes a la main, sans attendre la fin d'un cours.
     var onProposeCards: (Page) -> Void = { _ in }
     /// Une feuille s'ouvre par-dessus : le canevas doit rendre le premier
@@ -119,6 +121,7 @@ struct PageEditorView: View {
          onClose: @escaping () -> Void = {},
          onOpenSlide: @escaping (Page) -> Void = { _ in },
          addImageRequest: UUID? = nil,
+         openAtHeight: Double? = nil,
          isCoveredBySheet: Bool = false,
          onProposeCards: @escaping (Page) -> Void = { _ in }) {
         _page = Bindable(page)
@@ -126,6 +129,7 @@ struct PageEditorView: View {
         self.onClose = onClose
         self.onOpenSlide = onOpenSlide
         self.addImageRequest = addImageRequest
+        self.openAtHeight = openAtHeight
         self.isCoveredBySheet = isCoveredBySheet
         self.onProposeCards = onProposeCards
         let stored = page.drawing
@@ -241,6 +245,7 @@ struct PageEditorView: View {
                 }
             }
             .animation(.snappy(duration: 0.18), value: isDropTargeted)
+            .overlay { bookmarkRail }
             rightSide
             }
             .background(
@@ -281,6 +286,34 @@ struct PageEditorView: View {
         #endif
         #if os(iOS)
         .task { await loadPDF() }
+        .task {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-dumpBookmarks") {
+                try? await Task.sleep(for: .seconds(6))
+                var lines = ["zoom=\(viewport.zoom) offsetY=\(viewport.offset.y) hauteurVue=\(viewport.size.height) pageHauteur=\(PaperBackdrop.pageHeight)"]
+                for tab in bookmarkTabs {
+                    let y = CGFloat(tab.height) * PaperBackdrop.pageHeight * viewport.zoom - viewport.offset.y
+                    lines.append("signet \(tab.height) → y=\(y)")
+                }
+                if ProcessInfo.processInfo.arguments.contains("-simulateBookmark") {
+                    lines.append("milieu vise = \(centreHeight)")
+                    toggleBookmark()
+                    lines.append("apres 1er appui : \((page.bookmarks ?? []).count) signets, au centre = \(markAtCentre != nil)")
+                    toggleBookmark()
+                    lines.append("apres 2e appui : \((page.bookmarks ?? []).count) signets, au centre = \(markAtCentre != nil)")
+                }
+                try? lines.joined(separator: "\n").write(toFile: NSTemporaryDirectory() + "signets.txt",
+                                                         atomically: true, encoding: .utf8)
+            }
+            #endif
+        }
+        .task(id: openAtHeight) {
+            // Le canevas n'existe pas encore quand la vue apparait : on lui
+            // laisse le temps de se poser avant de le faire defiler.
+            guard let height = openAtHeight else { return }
+            try? await Task.sleep(for: .milliseconds(250))
+            canvasHandle.scroll(toHeight: height)
+        }
         .onChange(of: viewport) { scheduleTile() }
         .task {
             #if DEBUG
@@ -584,6 +617,54 @@ struct PageEditorView: View {
             Rectangle().fill(K.ink.opacity(0.1)).frame(height: 1)
         }
     }
+
+    #if os(iOS)
+    /// Les onglets de signet, au bord droit de la page.
+    private var bookmarkRail: some View {
+        BookmarkRail(
+            tabs: bookmarkTabs,
+            viewport: viewport,
+            isMarked: markAtCentre != nil,
+            onToggle: { toggleBookmark() }
+        )
+    }
+
+    private var bookmarkTabs: [BookmarkRail.Tab] {
+        (page.bookmarks ?? [])
+            .sorted { $0.height < $1.height }
+            .map { .init(id: $0.id, height: $0.height) }
+    }
+
+    /// La hauteur visee par le bouton : le milieu de ce qu'on regarde.
+    ///
+    /// On marque ce qu'on a sous les yeux, pas le haut de la page : en cours on
+    /// ecrit au milieu de l'ecran et le professeur insiste sur CE passage.
+    private var centreHeight: Double {
+        let zoom = max(viewport.zoom, 0.01)
+        let inPage = (viewport.offset.y + viewport.size.height / 2) / zoom
+        return Bookmarks.place(Double(inPage / PaperBackdrop.pageHeight))
+    }
+
+    private var markAtCentre: PageBookmark? {
+        let marks = (page.bookmarks ?? []).sorted { $0.height < $1.height }
+        guard let index = Bookmarks.index(near: centreHeight, among: marks.map(\.height))
+        else { return nil }
+        return marks[index]
+    }
+
+    /// Un appui pose la marque, le suivant au meme endroit la retire.
+    private func toggleBookmark() {
+        if let existing = markAtCentre {
+            context.delete(existing)
+        } else {
+            let mark = PageBookmark(height: centreHeight)
+            mark.page = page
+            context.insert(mark)
+        }
+        try? context.save()
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+    }
+    #endif
 
     /// La ligne sous le titre : la date, et la matiere quand il y en a une.
     private var subtitleLine: String {

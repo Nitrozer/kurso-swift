@@ -38,6 +38,20 @@ import PencilKit
         canvas.resignFirstResponder()
     }
 
+    /// Amene une hauteur de page au milieu de l'ecran.
+    ///
+    /// C'est le retour d'un signet : la liste donne une fraction de page, le
+    /// canevas la traduit en defilement, borne pour ne pas sortir du papier.
+    @MainActor
+    func scroll(toHeight height: Double) {
+        guard let canvas else { return }
+        let target = CGFloat(height) * canvas.contentSize.height - canvas.bounds.height / 2
+        let highest = max(0, canvas.contentSize.height - canvas.bounds.height)
+        canvas.setContentOffset(CGPoint(x: canvas.contentOffset.x,
+                                        y: min(max(0, target), highest)),
+                                animated: true)
+    }
+
     /// Le trace tel qu'il est A CET INSTANT.
     ///
     /// Enregistrer depuis l'etat SwiftUI perdait le dernier trait : l'etat est

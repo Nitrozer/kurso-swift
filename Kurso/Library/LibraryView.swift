@@ -25,6 +25,7 @@ struct LibraryView: View {
 
     @Environment(\.modelContext) private var context
     @Query(sort: \Course.name) private var courses: [Course]
+    @Query private var bookmarks: [PageBookmark]
     @Query private var slots: [TimeSlot]
     @Query private var assets: [PDFAsset]
     @Query(sort: \Page.createdAt, order: .reverse) private var pages: [Page]
@@ -39,6 +40,9 @@ struct LibraryView: View {
     @State private var sidePage: Page?
     /// La semaine, quand on la consulte.
     @State private var isShowingWeek = false
+    @State private var isShowingBookmarks = false
+    /// D'ou l'on vient quand on ouvre une page depuis la liste des signets.
+    @State private var openedBookmark: (pageID: UUID, height: Double)?
     /// Change pour demander a la feuille d'ouvrir le selecteur d'image.
     @State private var addImageRequest: UUID?
     @State private var openedCourse: Course?
@@ -169,6 +173,9 @@ struct LibraryView: View {
                 if ProcessInfo.processInfo.arguments.contains("-openWeek") {
                     isShowingWeek = true
                 }
+                if ProcessInfo.processInfo.arguments.contains("-openBookmarks") {
+                    isShowingBookmarks = true
+                }
                 if ProcessInfo.processInfo.arguments.contains("-simulateImport") {
                     let source = URL(filePath: "/tmp/Cours de maths.pdf")
                     let created = try? PDFImporter.importFile(
@@ -210,6 +217,18 @@ struct LibraryView: View {
                 }
                 if ProcessInfo.processInfo.arguments.contains("-openFirstPage") {
                     openedPage = pages.first
+                }
+                // La page qui porte des signets, pour voir les onglets.
+                if ProcessInfo.processInfo.arguments.contains("-openMarkedPage"),
+                   let marked = pages.first(where: { !($0.bookmarks ?? []).isEmpty }) {
+                    openedCourse = marked.course
+                    showsLoose = marked.course == nil
+                    openedPage = marked
+                    // Comme si l'on arrivait de la liste, sur le dernier signet.
+                    if ProcessInfo.processInfo.arguments.contains("-atMark"),
+                       let last = (marked.bookmarks ?? []).map(\.height).max() {
+                        openedBookmark = (marked.id, last)
+                    }
                 }
                 // La page rattachee a un cours termine, celle qui a de quoi
                 // proposer des cartes.
@@ -320,18 +339,7 @@ struct LibraryView: View {
                 Rectangle().fill(K.ink.opacity(0.12)).frame(width: 1)
                 }
                 #endif
-                PageEditorView(page: page,
-                               sidePage: $sidePage,
-                               onClose: { closeCahier() },
-                               onOpenSlide: { openedPage = $0 },
-                               addImageRequest: addImageRequest,
-                               isCoveredBySheet: sheetIsUp,
-                               onProposeCards: { asked in
-                                   #if os(iOS)
-                                   sprintWasManual = true
-                                   sprintFor = asked
-                                   #endif
-                               })
+                editor(for: page)
                     .id(page.id)
             }
             .animation(.snappy(duration: 0.28), value: navigatorShown)
@@ -446,6 +454,18 @@ struct LibraryView: View {
             TimetableOnboardingView().macSheet(760, 640)
         }
         #if os(iOS)
+        .sheet(isPresented: $isShowingBookmarks) {
+            BookmarksView(onOpen: { page, height in
+                openedBookmark = (page.id, height)
+                openedCourse = page.course
+                showsLoose = page.course == nil
+                openedPage = page
+                isShowingBookmarks = false
+            }, onClose: { isShowingBookmarks = false })
+            #if os(macOS)
+            .macSheet(560, 620)
+            #endif
+        }
         .fullScreenCover(isPresented: $isShowingWeek) {
             WeekView { isShowingWeek = false }
         }
@@ -576,6 +596,33 @@ struct LibraryView: View {
         openFirst(of: course)
     }
 
+    /// L'editeur, sorti de la vue : un argument de plus dans l'appel et le
+    /// compilateur renonce a verifier le corps entier (c'est arrive deux fois).
+    private func editor(for page: Page) -> some View {
+        PageEditorView(page: page,
+                       sidePage: $sidePage,
+                       onClose: { closeCahier() },
+                       onOpenSlide: { openedPage = $0 },
+                       addImageRequest: addImageRequest,
+                       openAtHeight: heightToReach(page),
+                       isCoveredBySheet: sheetIsUp,
+                       onProposeCards: { asked in
+                           #if os(iOS)
+                           sprintWasManual = true
+                           sprintFor = asked
+                           #endif
+                       })
+    }
+
+    /// La hauteur a rejoindre pour CETTE page, quand on arrive d'un signet.
+    ///
+    /// Sortie de la vue : un ternaire de plus dans l'appel a l'editeur et le
+    /// compilateur renonce a verifier le corps (c'est arrive deux fois).
+    private func heightToReach(_ page: Page) -> Double? {
+        guard let opened = openedBookmark, opened.pageID == page.id else { return nil }
+        return opened.height
+    }
+
     private func closeCahier() {
         #if os(iOS)
         // Fin de seance : c'est le moment de proposer trois cartes, pas
@@ -590,6 +637,7 @@ struct LibraryView: View {
         openedPage = nil
         openedCourse = nil
         showsLoose = false
+        openedBookmark = nil
     }
 
     #if os(iOS)
@@ -682,6 +730,7 @@ struct LibraryView: View {
             }
             Spacer(minLength: 0)
             searchField
+            if !bookmarks.isEmpty { bookmarksButton }
             if isInsideCahier { exportButton } else { importButton }
             #if os(iOS)
             if !isInsideCahier { backupMenu }
@@ -1006,6 +1055,29 @@ struct LibraryView: View {
     /// Ouvre l'emploi du temps : import la premiere fois, consultation
     /// ensuite. Le commentaire disait deja « consultation » ; il n'y avait
     /// rien a consulter, le bouton rouvrait l'import.
+    /// Les signets poses en cours. Le bouton n'apparait qu'une fois qu'il y en
+    /// a : avant, il ne designerait rien.
+    private var bookmarksButton: some View {
+        Button { isShowingBookmarks = true } label: {
+            HStack(spacing: 7) {
+                BookmarkGlyph()
+                    .fill(K.reward)
+                    .overlay(BookmarkGlyph().stroke(K.ink, style: StrokeStyle(lineWidth: 2.4, lineJoin: .round)))
+                    .frame(width: 10, height: 13)
+                Text("Signets")
+                    .font(KFont.body(12, weight: .extraBold))
+                    .foregroundStyle(K.ink)
+                Text("\(bookmarks.count)")
+                    .font(KFont.mono(10))
+                    .foregroundStyle(K.inkSoft)
+            }
+            .padding(.horizontal, 13)
+            .padding(.vertical, 7)
+            .overlay(Capsule().strokeBorder(K.ink, lineWidth: 2.5))
+        }
+        .buttonStyle(.plain)
+    }
+
     private var importButton: some View {
         Button { if slots.isEmpty { isImporting = true } else { isShowingWeek = true } } label: {
             HStack(spacing: 7) {
